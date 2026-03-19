@@ -1,8 +1,15 @@
 [build]
 builder = "nixpacks"
-buildCommand = "npm install && npm run build"
+buildCommand = "npm install"
 
 [deploy]
-startCommand = "node server.ts"
+startCommand = "tsx server.ts"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
+```
+
+Save, then run in terminal:
+```
+git add .
+git commit -m "fix: move tsx to dependencies for Railway"
+git push
