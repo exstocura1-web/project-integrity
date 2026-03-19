@@ -1,0 +1,62 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User profile with role-based access control. Read access restricted to owner and admins.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Unique identifier for the user, must match Auth UID." },
+        "email": { "type": "string", "format": "email", "description": "User's email address." },
+        "displayName": { "type": "string", "description": "User's display name (max 100 chars)." },
+        "role": { "type": "string", "enum": ["admin", "editor", "viewer"], "description": "User's role for RBAC." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "ISO 8601 timestamp of creation." }
+      },
+      "required": ["uid", "email", "role", "createdAt"]
+    },
+    "GovernanceRule": {
+      "title": "Governance Rule",
+      "description": "Custom threshold for project metrics. Managed by admins.",
+      "type": "object",
+      "properties": {
+        "metric": { "type": "string", "description": "Metric name (e.g., SPI, CPI)." },
+        "operator": { "type": "string", "enum": ["<", ">", "<=", ">=", "=="], "description": "Comparison operator." },
+        "threshold": { "type": "number", "description": "Threshold value." },
+        "action": { "type": "string", "description": "Action to take on breach (max 100 chars)." },
+        "enabled": { "type": "boolean", "description": "Whether the rule is active." },
+        "createdBy": { "type": "string", "format": "email", "description": "Email of the admin who created the rule." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp of creation." }
+      },
+      "required": ["metric", "operator", "threshold", "action", "enabled", "createdBy", "createdAt"]
+    },
+    "WorkflowLog": {
+      "title": "Workflow Log",
+      "description": "Record of a workflow action or event. Immutable after creation.",
+      "type": "object",
+      "properties": {
+        "time": { "type": "string", "format": "date-time", "description": "ISO 8601 timestamp of the event." },
+        "source": { "type": "string", "description": "Source system (max 50 chars)." },
+        "projectName": { "type": "string", "description": "Name of the project (max 100 chars)." },
+        "action": { "type": "string", "description": "Action performed (max 100 chars)." },
+        "status": { "type": "string", "description": "Status of the action (max 50 chars)." },
+        "result": { "type": "string", "description": "Detailed result or error message (max 5000 chars)." },
+        "isPending": { "type": "boolean", "description": "Whether the action is still in progress." },
+        "triggeredBy": { "type": "string", "format": "email", "description": "Email of the user who triggered the action." }
+      },
+      "required": ["time", "source", "action", "status", "triggeredBy"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles. Restricted to owner read/write."
+    },
+    "/governanceRules/{ruleId}": {
+      "schema": "GovernanceRule",
+      "description": "Governance thresholds. Admin only write."
+    },
+    "/workflowLogs/{logId}": {
+      "schema": "WorkflowLog",
+      "description": "History of system and user actions. Editor create/update, Admin delete."
+    }
+  }
+}

@@ -1,0 +1,91 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ================================================================
+    // PROJECT INTEGRITY — PRIVATE CONSULTANT TOOL
+    // Single-owner lock: only your verified Google account can access.
+    //
+    // TO ACTIVATE:
+    //   1. Firebase Console → Authentication → Users → click your account
+    //   2. Copy the "User UID" string (looks like: abc123XYZdef...)
+    //   3. Replace 1T0dZVCAVcOIrKE9ts1XkaOHDiJ3 below with it
+    //   4. Deploy with: firebase deploy --only firestore:rules
+    // ================================================================
+
+    function OWNER_UID() {
+      return "1T0dZVCAVcOIrKE9ts1XkaOHDiJ3";
+    }
+
+    function OWNER_EMAIL() {
+      return "Exstocura1@gmail.com";
+    }
+
+    function isOwner() {
+      return request.auth != null
+        && request.auth.uid == OWNER_UID()
+        && request.auth.token.email == OWNER_EMAIL()
+        && request.auth.token.email_verified == true;
+    }
+
+    // ── User profile ─────────────────────────────────────────────
+    match /users/{userId} {
+      allow read, write: if isOwner() && userId == request.auth.uid;
+    }
+
+    // ── Governance rules ─────────────────────────────────────────
+    match /governanceRules/{ruleId} {
+      allow read, write, delete: if isOwner();
+    }
+
+    // ── Workflow logs ─────────────────────────────────────────────
+    match /workflowLogs/{logId} {
+      allow read, write, delete: if isOwner();
+    }
+
+    // ── Client projects — core data model ────────────────────────
+    // Path: /clients/{clientId}/projects/{projectId}/activities/{id}
+    match /clients/{clientId} {
+      allow read, write, delete: if isOwner();
+
+      match /projects/{projectId} {
+        allow read, write, delete: if isOwner();
+
+        match /activities/{activityId} {
+          allow read, write, delete: if isOwner();
+        }
+
+        match /metrics/{metricId} {
+          allow read, write, delete: if isOwner();
+        }
+
+        match /snapshots/{snapshotId} {
+          allow read, write, delete: if isOwner();
+        }
+      }
+    }
+
+    // ── Share tokens — for client read-only links ─────────────────
+    // Owner writes tokens; anyone with the token URL can verify it
+    match /shareTokens/{token} {
+      allow read: if true;
+      allow write, delete: if isOwner();
+    }
+
+    // ── Shared views — pre-built read-only client dashboards ──────
+    match /sharedViews/{token} {
+      allow read: if true;
+      allow write: if isOwner();
+    }
+
+    // ── Health check ──────────────────────────────────────────────
+    match /test/connection {
+      allow read: if true;
+    }
+
+    // ── Default deny — everything else blocked ────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
