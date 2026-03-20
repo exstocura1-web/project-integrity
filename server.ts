@@ -9,6 +9,7 @@ import multer from "multer";
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { parseXer } from "./src/services/xerParser.js";
+import Anthropic from "@anthropic-ai/sdk";
 
 // Firebase Admin (server-side Firestore writes)
 // Set FIREBASE_PROJECT_ID + FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY in .env
@@ -49,6 +50,17 @@ async function startServer() {
   const ONEDRIVE_CLIENT_SECRET = process.env.ONEDRIVE_CLIENT_SECRET;
   const ONEDRIVE_TENANT_ID = process.env.ONEDRIVE_TENANT_ID || "common";
   const REDIRECT_URI = `${process.env.APP_URL}/api/auth/onedrive/callback`;
+
+  // Anthropic (server-only): used by /api/ai/* routes below.
+  const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
+  const MODEL = "claude-sonnet-4-6";
+  const anthropic = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
+
+  function extractAnthropicText(response: any): string {
+    const block = response?.content?.[0];
+    if (block?.type === "text" && typeof block.text === "string") return block.text;
+    return "";
+  }
 
   // API route for manual sync trigger
   app.post("/api/workflow/sync", (req, res) => {
@@ -402,6 +414,104 @@ async function startServer() {
         res.status(400).json({ success: false, message: "P6 Connection Failed" });
       }
     }, 1500);
+  });
+
+  // --- Anthropic AI Routes (server-only) ---
+  app.post("/api/ai/summarize", async (req, res) => {
+    if (!anthropic) {
+      return res.status(500).json({ error: "Anthropic API key not configured" });
+    }
+
+    const logs = Array.isArray(req.body?.logs) ? req.body.logs : [];
+    const logText = logs
+      .map(
+        (l: any) =>
+          `[${l.time}] ${l.source} | Project: ${l.projectName || "Global"} | ${l.action} — ${l.status} (${l.result})`
+      )
+      .join("\n");
+
+    const prompt = `You are a senior project controls analyst reviewing automated workflow logs for a construction project governance system.
+
+Analyse the following workflow logs and provide a concise professional summary (3–5 sentences). 
+- Highlight any failures, timeouts, or anomalies
+- Note which data sources are active vs. failing
+- Flag any patterns that suggest a data pipeline issue
+- End with one recommended action if any issues exist
+
+Logs:
+${logText}`;
+
+    try {
+      const response = await anthropic.messages.create({
+        model: MODEL,
+        max_tokens: 1000,
+        messages: [{ role: "user", content: prompt }],
+      });
+
+      const summary = extractAnthropicText(response) || "No summary generated.";
+      res.json({ summary });
+    } catch (error: any) {
+      console.error("Claude Log Summarization Error:", error);
+      res.status(500).json({ error: error?.message || "Summarization failed" });
+    }
+  });
+
+  app.post("/api/ai/analyze-risk", async (req, res) => {
+    if (!anthropic) {
+      return res.status(500).json({ error: "Anthropic API key not configured" });
+    }
+
+    const tasks = Array.isArray(req.body?.tasks) ? req.body.tasks : [];
+    const metrics = req.body?.metrics ?? {};
+
+    const taskText = tasks
+      .map(
+        (t: any) =>
+          `- ${t.name}: Start ${t.startDate}, Duration ${t.duration}d, Type: ${t.type}, Dependencies: [${
+            Array.isArray(t.dependencies) && t.dependencies.length ? t.dependencies.join(", ") : "none"
+          }]`
+      )
+      .join("\n");
+
+    const metricsText = JSON.stringify(metrics, null, 2);
+
+    const prompt = `You are a certified planning engineer (PMI-SP) and earned value management specialist with 15 years of AEC industry experience.
+
+Perform a schedule risk analysis on the following project data. Structure your response with these sections:
+
+**Critical Path Assessment**
+Identify the critical path from the task list and any near-critical paths (total float < 5 days).
+
+**EVM Performance Interpretation**
+Interpret the SPI and CPI trends. Flag any variance thresholds that require corrective action (SPI < 0.95 or CPI < 0.95).
+
+**Top 3 Schedule Risks**
+List the three highest-priority risks with predicted impact in days and cost.
+
+**Recommended Recovery Actions**
+Provide 2–3 specific, actionable recovery strategies appropriate for the current schedule position.
+
+Keep the analysis concise and specific — avoid generic advice. Write as if presenting to a project owner.
+
+Schedule Tasks:
+${taskText}
+
+EVM & Performance Metrics:
+${metricsText}`;
+
+    try {
+      const response = await anthropic.messages.create({
+        model: MODEL,
+        max_tokens: 1500,
+        messages: [{ role: "user", content: prompt }],
+      });
+
+      const analysis = extractAnthropicText(response) || "No analysis generated.";
+      res.json({ analysis });
+    } catch (error: any) {
+      console.error("Claude Risk Analysis Error:", error);
+      res.status(500).json({ error: error?.message || "Risk analysis failed" });
+    }
   });
 
   // --- OneDrive OAuth Routes ---
