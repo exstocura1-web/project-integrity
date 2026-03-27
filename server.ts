@@ -4,6 +4,7 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import path from "path";
 import cookieParser from "cookie-parser";
+import cors from "cors";
 import axios from "axios";
 import multer from "multer";
 import { initializeApp, cert, getApps } from "firebase-admin/app";
@@ -32,18 +33,31 @@ try {
 
 async function startServer() {
   const app = express();
+  const frontendOrigin = process.env.FRONTEND_URL || "";
   const httpServer = createServer(app);
   const io = new Server(httpServer, {
-    cors: { origin: "*" }
+    cors: {
+      origin: frontendOrigin || true,
+      credentials: true,
+    }
   });
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT || 3000);
 
   // Multer setup for local file uploads
   const upload = multer({ storage: multer.memoryStorage() });
 
   // Middleware
+  app.use(cors({
+    origin: frontendOrigin || true,
+    credentials: true,
+  }));
   app.use(express.json());
   app.use(cookieParser());
+
+  // Lightweight health endpoint for deployment checks
+  app.get("/api/health", (_req, res) => {
+    res.status(200).json({ ok: true, service: "project-integrity-api" });
+  });
 
   // OneDrive OAuth Configuration
   const ONEDRIVE_CLIENT_ID = process.env.ONEDRIVE_CLIENT_ID;

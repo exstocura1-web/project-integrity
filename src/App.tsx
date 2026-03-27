@@ -149,6 +149,20 @@ const MOCK_LOGS = [
 
 import { summarizeLogs, analyzeScheduleRisk } from './services/claudeService';
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+const SOCKET_URL = (import.meta.env.VITE_SOCKET_URL || '').replace(/\/$/, '');
+
+function apiUrl(path: string) {
+  return API_BASE_URL ? `${API_BASE_URL}${path}` : path;
+}
+
+function apiFetch(path: string, init?: RequestInit) {
+  return fetch(apiUrl(path), {
+    ...init,
+    credentials: 'include',
+  });
+}
+
 export default function App() {
   const [user, setUser] = useState<any>(null);
   const [aiLogSummary, setAiLogSummary] = useState<string | null>(null);
@@ -552,7 +566,7 @@ try {
 
   // Set up real-time webhooks via Socket.io
   useEffect(() => {
-    const socket = io(); // Connects to the same host/port
+    const socket = io(SOCKET_URL || undefined); // Uses explicit backend URL in production
 
     socket.on('connect', () => {
       setSocketConnected(true);
@@ -599,7 +613,7 @@ try {
   useEffect(() => {
     const checkStatus = async () => {
       try {
-        const res = await fetch('/api/onedrive/status');
+        const res = await apiFetch('/api/onedrive/status');
         const data = await res.json();
         setOneDriveConnected(data.connected);
         if (data.connected) {
@@ -625,7 +639,7 @@ try {
   const fetchFiles = async () => {
     setIsLoadingFiles(true);
     try {
-      const res = await fetch('/api/onedrive/files');
+      const res = await apiFetch('/api/onedrive/files');
       if (res.ok) {
         const data = await res.json();
         setOneDriveFiles(data.files);
@@ -641,7 +655,7 @@ try {
 
   const handleConnectOneDrive = async () => {
     try {
-      const res = await fetch('/api/auth/onedrive/url');
+      const res = await apiFetch('/api/auth/onedrive/url');
       const { url } = await res.json();
       window.open(url, 'onedrive_auth', 'width=600,height=700');
     } catch (e) {
@@ -658,7 +672,7 @@ try {
     }, 300);
 
     try {
-      await fetch('/api/workflow/ingest', {
+      await fetch(apiUrl('/api/workflow/ingest'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fileId: file.id, fileName: file.name, projectName })
@@ -713,7 +727,7 @@ try {
         formData.append('file', file);
         formData.append('projectName', projectName);
         
-        await fetch('/api/workflow/upload', {
+        await fetch(apiUrl('/api/workflow/upload'), {
           method: 'POST',
           body: formData
         });
@@ -777,7 +791,7 @@ try {
     if (!activeTask) return;
     
     try {
-      await fetch('/api/workflow/cancel', {
+      await fetch(apiUrl('/api/workflow/cancel'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(activeTask)
@@ -803,7 +817,7 @@ try {
     setIsSyncing(true);
     setActiveTask({ source: "Global Sync", action: "Manual Data Fetch" });
     try {
-      const response = await fetch('/api/workflow/sync', { 
+      const response = await fetch(apiUrl('/api/workflow/sync'), { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -866,7 +880,7 @@ try {
     setIsAliceSimulating(true);
     setActiveTask({ source: "ALICE Technologies", action: "Simulation" });
     try {
-      await fetch('/api/workflow/alice-simulate', {
+      await fetch(apiUrl('/api/workflow/alice-simulate'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -895,7 +909,7 @@ try {
     setP6HealthStatus('unknown');
     
     try {
-      const response = await fetch('/api/workflow/p6-health', {
+      const response = await fetch(apiUrl('/api/workflow/p6-health'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -930,7 +944,7 @@ try {
     setJiraHealthStatus('unknown');
     
     try {
-      const response = await fetch('/api/jira/health', {
+      const response = await fetch(apiUrl('/api/jira/health'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -963,7 +977,7 @@ try {
       });
 
       // Notify backend
-      await fetch('/api/jira/link', {
+      await fetch(apiUrl('/api/jira/link'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
