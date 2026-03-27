@@ -13,6 +13,14 @@ import { getFirestore } from "firebase-admin/firestore";
 import { parseXer } from "./src/services/xerParser.js";
 import Anthropic from "@anthropic-ai/sdk";
 
+process.on("uncaughtException", (err) => {
+  console.error("UNCAUGHT_EXCEPTION", err);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("UNHANDLED_REJECTION", reason);
+});
+
 // Firebase Admin (server-side Firestore writes)
 // Set FIREBASE_PROJECT_ID + FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY in .env
 let adminDb: ReturnType<typeof getFirestore> | null = null;
@@ -52,6 +60,10 @@ async function startServer() {
     origin: frontendOrigin || true,
     credentials: true,
   }));
+  app.use((req, _res, next) => {
+    console.log(`REQ ${req.method} ${req.path}`);
+    next();
+  });
   app.use(express.json());
   app.use(cookieParser());
 
@@ -673,6 +685,11 @@ ${metricsText}`;
       });
     }
   }
+
+  app.use((err: any, _req: any, res: any, _next: any) => {
+    console.error("EXPRESS_ERROR", err);
+    res.status(500).json({ error: "Internal server error" });
+  });
 
   httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
