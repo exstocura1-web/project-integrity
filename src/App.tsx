@@ -68,7 +68,7 @@ import {
   db,
   googleProvider,
   ensureAuthPersistence,
-  signInWithRedirect,
+  signInWithGoogle,
   getRedirectResult,
   signOut,
   onAuthStateChanged,
@@ -469,7 +469,10 @@ try {
     (async () => {
       try {
         await ensureAuthPersistence();
-        await getRedirectResult(auth);
+        const redirectResult = await getRedirectResult(auth);
+        if (redirectResult?.user?.email) {
+          console.log("Signed in via redirect:", redirectResult.user.email);
+        }
       } catch (e) {
         console.error("Auth redirect / persistence bootstrap failed:", e);
       }
@@ -554,8 +557,7 @@ try {
   const handleLogin = async () => {
     setLoginError(null);
     try {
-      await ensureAuthPersistence();
-      await signInWithRedirect(auth, googleProvider);
+      await signInWithGoogle();
     } catch (error: any) {
       console.error("Login failed:", error);
       setLoginError(error?.message || "Sign-in could not start. Check authorized domains in Firebase.");

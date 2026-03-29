@@ -22,6 +22,12 @@ export async function ensureAuthPersistence(): Promise<void> {
   await setPersistence(auth, browserLocalPersistence);
 }
 
+/** Google sign-in: local persistence then full-page redirect (reliable vs popup). */
+export async function signInWithGoogle(): Promise<void> {
+  await setPersistence(auth, browserLocalPersistence);
+  await signInWithRedirect(auth, googleProvider);
+}
+
 export {
   signInWithRedirect,
   getRedirectResult,
