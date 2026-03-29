@@ -1,5 +1,14 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithRedirect,
+  getRedirectResult,
+  setPersistence,
+  browserLocalPersistence,
+  signOut,
+  onAuthStateChanged,
+} from 'firebase/auth';
 import { getFirestore, doc, getDoc, setDoc, collection, onSnapshot, query, orderBy, limit, addDoc, updateDoc, deleteDoc, getDocFromServer, Timestamp } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -8,23 +17,31 @@ export const auth = getAuth(app);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const googleProvider = new GoogleAuthProvider();
 
-export { 
-  signInWithPopup, 
-  signOut, 
-  onAuthStateChanged, 
-  doc, 
-  getDoc, 
-  setDoc, 
-  collection, 
-  onSnapshot, 
-  query, 
-  orderBy, 
-  limit, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
+/** Ensures tokens survive tab close / browser restart (localStorage). Call before redirect sign-in. */
+export async function ensureAuthPersistence(): Promise<void> {
+  await setPersistence(auth, browserLocalPersistence);
+}
+
+export {
+  signInWithRedirect,
+  getRedirectResult,
+  setPersistence,
+  browserLocalPersistence,
+  signOut,
+  onAuthStateChanged,
+  doc,
+  getDoc,
+  setDoc,
+  collection,
+  onSnapshot,
+  query,
+  orderBy,
+  limit,
+  addDoc,
+  updateDoc,
+  deleteDoc,
   getDocFromServer,
-  Timestamp
+  Timestamp,
 };
 
 // Test connection

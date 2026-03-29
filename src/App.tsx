@@ -63,25 +63,27 @@ import {
   differenceInDays, 
   max 
 } from 'date-fns';
-import { 
-  auth, 
-  db, 
-  googleProvider, 
-  signInWithPopup, 
-  signOut, 
-  onAuthStateChanged, 
-  doc, 
-  getDoc, 
-  setDoc, 
-  collection, 
-  onSnapshot, 
-  query, 
-  orderBy, 
-  limit, 
-  addDoc, 
-  updateDoc, 
+import {
+  auth,
+  db,
+  googleProvider,
+  ensureAuthPersistence,
+  signInWithRedirect,
+  getRedirectResult,
+  signOut,
+  onAuthStateChanged,
+  doc,
+  getDoc,
+  setDoc,
+  collection,
+  onSnapshot,
+  query,
+  orderBy,
+  limit,
+  addDoc,
+  updateDoc,
   deleteDoc,
-  Timestamp
+  Timestamp,
 } from './firebase';
 
 interface GovernanceRule {
@@ -202,11 +204,12 @@ export default function App() {
   const [isAnalyzingRisk, setIsAnalyzingRisk] = useState(false);
   const [userRole, setUserRole] = useState<'admin' | 'editor' | 'viewer' | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
   const [governanceRules, setGovernanceRules] = useState<GovernanceRule[]>([]);
   
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState('portfolio');
   const [analyticsMetrics, setAnalyticsMetrics] = useState(MOCK_METRICS_HISTORY);
   const [smartPmMetrics, setSmartPmMetrics] = useState({
     compression: 14.2,
@@ -458,35 +461,51 @@ try {
     URL.revokeObjectURL(url);
   };
 
-  // Firebase Auth & Firestore Sync
+  // Firebase Auth: local persistence + redirect return, then onAuthStateChanged
   useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
-      if (currentUser) {
-        const userDocRef = doc(db, 'users', currentUser.uid);
-        const userDoc = await getDoc(userDocRef);
-        
-        if (!userDoc.exists()) {
-          const newUser = {
-            uid: currentUser.uid,
-            email: currentUser.email,
-            displayName: currentUser.displayName,
-            role: 'viewer', // Default role
-            createdAt: new Date().toISOString()
-          };
-          await setDoc(userDocRef, newUser);
-          setUserRole('viewer');
-        } else {
-          setUserRole(userDoc.data().role);
-        }
-        setUser(currentUser);
-      } else {
-        setUser(null);
-        setUserRole(null);
-      }
-      setIsAuthReady(true);
-    });
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
 
-    return () => unsubscribeAuth();
+    (async () => {
+      try {
+        await ensureAuthPersistence();
+        await getRedirectResult(auth);
+      } catch (e) {
+        console.error("Auth redirect / persistence bootstrap failed:", e);
+      }
+      if (cancelled) return;
+
+      unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+        if (currentUser) {
+          const userDocRef = doc(db, 'users', currentUser.uid);
+          const userDoc = await getDoc(userDocRef);
+
+          if (!userDoc.exists()) {
+            const newUser = {
+              uid: currentUser.uid,
+              email: currentUser.email,
+              displayName: currentUser.displayName,
+              role: 'viewer',
+              createdAt: new Date().toISOString(),
+            };
+            await setDoc(userDocRef, newUser);
+            setUserRole('viewer');
+          } else {
+            setUserRole(userDoc.data().role);
+          }
+          setUser(currentUser);
+        } else {
+          setUser(null);
+          setUserRole(null);
+        }
+        setIsAuthReady(true);
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
   }, []);
 
   useEffect(() => {
@@ -533,17 +552,20 @@ try {
   }, [activeTab]);
 
   const handleLogin = async () => {
+    setLoginError(null);
     try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (error) {
+      await ensureAuthPersistence();
+      await signInWithRedirect(auth, googleProvider);
+    } catch (error: any) {
       console.error("Login failed:", error);
+      setLoginError(error?.message || "Sign-in could not start. Check authorized domains in Firebase.");
     }
   };
 
   const handleLogout = async () => {
     try {
       await signOut(auth);
-      setActiveTab('dashboard');
+      setActiveTab('portfolio');
     } catch (error) {
       console.error("Logout failed:", error);
     }
@@ -1205,13 +1227,20 @@ try {
               <h1 className="font-serif italic text-3xl">Project Governance</h1>
               <p className="text-xs font-mono opacity-60 uppercase tracking-widest">Automated Compliance & Risk Management</p>
             </div>
-            <button 
+            <button
+              type="button"
               onClick={handleLogin}
               className="w-full py-4 bg-[#141414] text-[#E4E3E0] font-mono text-xs uppercase tracking-[0.2em] font-bold hover:bg-black transition-all flex items-center justify-center gap-3"
             >
               <User className="w-4 h-4" />
-              Sign In with Google
+              Continue with Google
             </button>
+            <p className="text-[9px] font-mono opacity-50 leading-relaxed">
+              You will be redirected to Google, then return here. Works reliably in Chrome (no popup blocker).
+            </p>
+            {loginError && (
+              <p className="text-[10px] font-mono text-red-600 text-center">{loginError}</p>
+            )}
             <p className="text-[10px] font-mono opacity-40 leading-relaxed">
               Access restricted to authorized personnel. All actions are logged for audit purposes.
             </p>
