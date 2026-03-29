@@ -1,31 +1,51 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Project Integrity™
 
-# Run and deploy your AI Studio app
+Internal AI-enabled project controls workspace for **Exsto Cura Consilium** — schedule intelligence, governance workflows, and manual **XER / CSV** ingest backed by **Firebase** (Firestore + optional Storage) with **Claude** analysis on the server.
 
-This contains everything you need to run your app locally.
+**Remote:** [github.com/exstocura1-web/project-integrity](https://github.com/exstocura1-web/project-integrity)
 
-View your app in AI Studio: https://ai.studio/apps/47153a80-b629-458d-9c40-b59544d46e9c
+## Product vs internal automation
 
-## Run Locally
+**This app** (Firebase + React + Express) is the **Project Integrity** product surface: portfolio-oriented UI, file ingest, Firestore artifacts, and `/api/ai/*` routes using Anthropic. **n8n** workflows on your ops machine (`C:\Exsto\n8n-workflows\`) are a **separate** internal VA stack (email, reports, BD). Do not describe n8n as built-in live connectors inside this app for enterprise stakeholders; enterprise paths assume **manual** file handoff unless you ship optional webhooks later.
 
-**Prerequisites:**  Node.js
+See `docs/ARCHITECTURE.md` and `docs/MODEL-GOVERNANCE.md`.
 
+## Prerequisites
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+- Node.js (see `.nvmrc`)
+- Firebase project with Firestore (and **Storage** enabled for raw upload blobs)
+- Anthropic API key
 
-## Production deploy notes
+## Run locally
 
-- Deploy frontend (Vite) to Vercel using `npm run build` with `dist` output.
-- Deploy backend (`server.ts`) to a Node host (for example Railway) using `tsx server.ts`.
-- Set frontend env vars in Vercel:
-  - `VITE_API_BASE_URL=https://your-backend-host`
-  - `VITE_SOCKET_URL=https://your-backend-host`
-- Set backend env vars in Railway:
-  - `APP_URL=https://your-backend-host`
-  - `FRONTEND_URL=https://your-frontend-host`
+```bash
+npm install
+cp .env.example .env
+# Fill ANTHROPIC_API_KEY, Firebase Admin fields, VITE_* URLs for split dev if needed
+npm run dev
+```
+
+- **Single origin:** `server.ts` serves Vite middleware in development on one port (default **3000**).
+- **Split:** Build frontend with `npm run build`, deploy API to Railway and static `dist` to Vercel; set `VITE_API_BASE_URL` and `VITE_SOCKET_URL` to the Railway host.
+
+## Production deploy
+
+- **Frontend (Vercel):** `npm run build` → output `dist`.
+- **Backend (Railway):** `tsx server.ts` with `NODE_ENV=production`, `APP_URL`, `FRONTEND_URL`, Firebase Admin env vars, `FIREBASE_STORAGE_BUCKET` if non-default.
+- Env vars are documented in **`.env.example`** (no secrets committed).
+
+## Manual ingest MVP
+
+See `docs/PRD-MANUAL-INGEST-MVP.md`. Filing Cabinet tab: **Client ID**, **Project name**, upload **.xer** / **.csv**, **Recent uploads** list via `GET /api/ingest/uploads`.
+
+## Scripts
+
+| Command | Purpose |
+|--------|---------|
+| `npm run dev` | Dev server (Vite + API + Socket.IO) |
+| `npm run build` | Production SPA build |
+| `npm run lint` | `tsc --noEmit` |
+
+## Legacy
+
+This repo was bootstrapped from an AI Studio export; branding and governance are now Exsto Cura–specific.

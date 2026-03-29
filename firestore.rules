@@ -1,91 +1,149 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // ================================================================
-    // PROJECT INTEGRITY — PRIVATE CONSULTANT TOOL
-    // Single-owner lock: only your verified Google account can access.
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
     //
-    // TO ACTIVATE:
-    //   1. Firebase Console → Authentication → Users → click your account
-    //   2. Copy the "User UID" string (looks like: abc123XYZdef...)
-    //   3. Replace 1T0dZVCAVcOIrKE9ts1XkaOHDiJ3 below with it
-    //   4. Deploy with: firebase deploy --only firestore:rules
-    // ================================================================
+    // Collection: users
+    // Document ID: {userId} (matches request.auth.uid)
+    // Fields:
+    //   - uid: string (required, matches userId)
+    //   - email: string (required, email format)
+    //   - displayName: string (optional, < 100 chars)
+    //   - role: string (required, enum: ['admin', 'editor', 'viewer'])
+    //   - createdAt: string (required, ISO 8601)
+    //
+    // Collection: governanceRules
+    // Document ID: {ruleId}
+    // Fields:
+    //   - metric: string (required, enum)
+    //   - operator: string (required, enum)
+    //   - threshold: number (required)
+    //   - action: string (required, < 100 chars)
+    //   - enabled: boolean (required)
+    //   - createdBy: string (required, email)
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: workflowLogs
+    // Document ID: {logId}
+    // Fields:
+    //   - time: string (required, ISO 8601)
+    //   - source: string (required, < 50 chars)
+    //   - projectName: string (optional, < 100 chars)
+    //   - action: string (required, < 100 chars)
+    //   - status: string (required, < 50 chars)
+    //   - result: string (optional, < 5000 chars)
+    //   - isPending: boolean (optional)
+    //   - triggeredBy: string (required, email)
+    //
+    // ===============================================================
 
-    function OWNER_UID() {
-      return "1T0dZVCAVcOIrKE9ts1XkaOHDiJ3";
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
     }
 
-    function OWNER_EMAIL() {
-      return "Exstocura1@gmail.com";
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
     }
 
-    function isOwner() {
-      return request.auth != null
-        && request.auth.uid == OWNER_UID()
-        && request.auth.token.email == OWNER_EMAIL()
-        && request.auth.token.email_verified == true;
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "Exstocura1@gmail.com" && request.auth.token.email_verified == true));
     }
 
-    // ── User profile ─────────────────────────────────────────────
+    function isEditor() {
+      return isAdmin() || (isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'editor');
+    }
+
+    function isViewer() {
+      return isEditor() || (isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'viewer');
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    function validString(field, min, max) {
+      return request.resource.data[field] is string && 
+             request.resource.data[field].size() >= min && 
+             request.resource.data[field].size() <= max;
+    }
+
+    // Domain Validators
+    function isValidUser(data) {
+      return data.keys().hasOnly(['uid', 'email', 'displayName', 'role', 'createdAt']) &&
+             data.uid == request.auth.uid &&
+             isValidEmail(data.email) &&
+             (data.displayName == null || (data.displayName is string && data.displayName.size() < 100)) &&
+             data.role in ['admin', 'editor', 'viewer'] &&
+             isValidDateString(data.createdAt);
+    }
+
+    function isValidGovernanceRule(data) {
+      return data.keys().hasOnly(['metric', 'operator', 'threshold', 'action', 'enabled', 'createdBy', 'createdAt']) &&
+             data.metric is string && data.metric.size() > 0 && data.metric.size() < 50 &&
+             data.operator in ['<', '>', '<=', '>=', '=='] &&
+             data.threshold is number &&
+             data.action is string && data.action.size() > 0 && data.action.size() < 100 &&
+             data.enabled is bool &&
+             isValidEmail(data.createdBy) &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidWorkflowLog(data) {
+      return data.keys().hasAll(['time', 'source', 'action', 'status', 'triggeredBy']) &&
+             data.keys().hasOnly(['time', 'source', 'projectName', 'action', 'status', 'result', 'isPending', 'triggeredBy']) &&
+             isValidDateString(data.time) &&
+             data.source is string && data.source.size() < 50 &&
+             (!('projectName' in data) || (data.projectName is string && data.projectName.size() < 100)) &&
+             data.action is string && data.action.size() < 100 &&
+             data.status is string && data.status.size() < 50 &&
+             (!('result' in data) || (data.result is string && data.result.size() < 5000)) &&
+             (!('isPending' in data) || data.isPending is bool) &&
+             isValidEmail(data.triggeredBy);
+    }
+
+    // Rules
     match /users/{userId} {
-      allow read, write: if isOwner() && userId == request.auth.uid;
+      // CRITICAL: Prevent PII leak by restricting read to owner or admin
+      allow read: if isOwner(userId) || isAdmin();
+      
+      allow create: if isOwner(userId) && 
+                      isValidUser(request.resource.data) && 
+                      request.resource.data.role == 'viewer'; // Default role
+                      
+      allow update: if isAdmin() || 
+                      (isOwner(userId) && 
+                       isValidUser(request.resource.data) && 
+                       request.resource.data.role == resource.data.role && // Prevent self-promotion
+                       request.resource.data.uid == resource.data.uid &&
+                       request.resource.data.createdAt == resource.data.createdAt);
     }
 
-    // ── Governance rules ─────────────────────────────────────────
     match /governanceRules/{ruleId} {
-      allow read, write, delete: if isOwner();
+      allow read: if isViewer();
+      allow create: if isAdmin() && isValidGovernanceRule(request.resource.data);
+      allow update: if isAdmin() && isValidGovernanceRule(request.resource.data);
+      allow delete: if isAdmin();
     }
 
-    // ── Workflow logs ─────────────────────────────────────────────
     match /workflowLogs/{logId} {
-      allow read, write, delete: if isOwner();
+      allow read: if isViewer();
+      allow create: if isEditor() && isValidWorkflowLog(request.resource.data);
+      allow update: if isEditor() && isValidWorkflowLog(request.resource.data) && 
+                      request.resource.data.time == resource.data.time; // Immutable time
+      allow delete: if isAdmin();
     }
 
-    // ── Client projects — core data model ────────────────────────
-    // Path: /clients/{clientId}/projects/{projectId}/activities/{id}
-    match /clients/{clientId} {
-      allow read, write, delete: if isOwner();
-
-      match /projects/{projectId} {
-        allow read, write, delete: if isOwner();
-
-        match /activities/{activityId} {
-          allow read, write, delete: if isOwner();
-        }
-
-        match /metrics/{metricId} {
-          allow read, write, delete: if isOwner();
-        }
-
-        match /snapshots/{snapshotId} {
-          allow read, write, delete: if isOwner();
-        }
-      }
-    }
-
-    // ── Share tokens — for client read-only links ─────────────────
-    // Owner writes tokens; anyone with the token URL can verify it
-    match /shareTokens/{token} {
-      allow read: if true;
-      allow write, delete: if isOwner();
-    }
-
-    // ── Shared views — pre-built read-only client dashboards ──────
-    match /sharedViews/{token} {
-      allow read: if true;
-      allow write: if isOwner();
-    }
-
-    // ── Health check ──────────────────────────────────────────────
     match /test/connection {
       allow read: if true;
-    }
-
-    // ── Default deny — everything else blocked ────────────────────
-    match /{document=**} {
-      allow read, write: if false;
     }
   }
 }

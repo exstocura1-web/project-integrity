@@ -1,5 +1,8 @@
 type SummarizeResponse = { summary: string };
 type AnalyzeRiskResponse = { analysis: string };
+type BirResponse = { analysis: string; model: string; methodology: string };
+type TriageResponse = { report: string; model: string; methodology: string };
+type PortfolioResponse = { engagements: any[]; generatedAt?: string; note?: string };
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
@@ -53,5 +56,36 @@ export async function analyzeScheduleRisk(tasks: any[], metrics: any): Promise<s
     console.error("Claude Risk Analysis Error:", error);
     return "Failed to perform risk analysis. Please check your Anthropic API key.";
   }
+}
+
+/** GET /api/portfolio/summary — all client/project engagements with schedule health. */
+export async function fetchPortfolioEngagements(): Promise<PortfolioResponse> {
+  const res = await fetch(apiUrl("/api/portfolio/summary"), { credentials: "include" });
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    throw new Error(`Portfolio request failed (${res.status}): ${t || res.statusText}`);
+  }
+  return (await res.json()) as PortfolioResponse;
+}
+
+/** POST /api/ai/bir — BIR™ analysis from Firestore XER snapshot (uses claude-sonnet-4-20250514 on server). */
+export async function runBirAnalysis(params: {
+  clientId: string;
+  projectId: string;
+  clientContext?: string;
+}): Promise<BirResponse> {
+  return postJson<BirResponse>("/api/ai/bir", params);
+}
+
+/** POST /api/ai/triage-impact-report — TRIAGE-IMPACT™ TIA-style Markdown report. */
+export async function runTriageImpactReport(body: {
+  projectName: string;
+  scheduleFacts: Record<string, unknown>;
+  impactingEvents: Array<{ description: string; date?: string; source?: string }>;
+  ownerNarrative?: string;
+  reliefSought?: string;
+  analysisWindow?: { start?: string; end?: string };
+}): Promise<TriageResponse> {
+  return postJson<TriageResponse>("/api/ai/triage-impact-report", body);
 }
 

@@ -4,14 +4,18 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import path from "path";
 import fs from "fs";
+import { createHash, randomUUID } from "crypto";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import axios from "axios";
 import multer from "multer";
 import { initializeApp, cert, getApps } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
 import { parseXer } from "./src/services/xerParser.js";
 import Anthropic from "@anthropic-ai/sdk";
+import { ANTHROPIC_MODEL } from "./src/config/anthropicModel.js";
+import { buildBirPrompt, buildTriageImpactPrompt } from "./src/prompts/methodologyPrompts.js";
 
 process.on("uncaughtException", (err) => {
   console.error("UNCAUGHT_EXCEPTION", err);
@@ -21,9 +25,11 @@ process.on("unhandledRejection", (reason) => {
   console.error("UNHANDLED_REJECTION", reason);
 });
 
-// Firebase Admin (server-side Firestore writes)
+// Firebase Admin (server-side Firestore writes + optional Storage)
 // Set FIREBASE_PROJECT_ID + FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY in .env
+// Optional: FIREBASE_STORAGE_BUCKET (defaults to <PROJECT_ID>.appspot.com)
 let adminDb: ReturnType<typeof getFirestore> | null = null;
+let adminBucket: ReturnType<ReturnType<typeof getStorage>["bucket"]> | null = null;
 try {
   if (!getApps().length) {
     initializeApp({
@@ -35,6 +41,11 @@ try {
     });
   }
   adminDb = getFirestore();
+  const pid = process.env.FIREBASE_PROJECT_ID;
+  if (pid) {
+    const bucketName = process.env.FIREBASE_STORAGE_BUCKET || `${pid}.appspot.com`;
+    adminBucket = getStorage().bucket(bucketName);
+  }
   console.log("Firebase Admin initialised");
 } catch (e) {
   console.warn("Firebase Admin not configured — set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY in .env");
@@ -52,8 +63,16 @@ async function startServer() {
   });
   const PORT = Number(process.env.PORT || 3000);
 
-  // Multer setup for local file uploads
-  const upload = multer({ storage: multer.memoryStorage() });
+  const MAX_UPLOAD_BYTES = 52 * 1024 * 1024; // PRD: 52 MB cap
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_UPLOAD_BYTES },
+    fileFilter: (_req, file, cb) => {
+      const ext = file.originalname.split(".").pop()?.toLowerCase();
+      if (ext === "xer" || ext === "csv") return cb(null, true);
+      cb(new Error("Only .xer and .csv uploads are allowed"));
+    },
+  });
 
   // Middleware
   app.use(cors({
@@ -80,13 +99,42 @@ async function startServer() {
 
   // Anthropic (server-only): used by /api/ai/* routes below.
   const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
-  const MODEL = "claude-sonnet-4-6";
   const anthropic = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
 
   function extractAnthropicText(response: any): string {
     const block = response?.content?.[0];
     if (block?.type === "text" && typeof block.text === "string") return block.text;
     return "";
+  }
+
+  /** Load XER-derived project doc + activity sample for BIR™ (low-float biased). */
+  async function loadBirPayloadFromFirestore(clientId: string, projectId: string) {
+    if (!adminDb) return null;
+    const projectRef = adminDb.collection("clients").doc(clientId).collection("projects").doc(projectId);
+    const snap = await projectRef.get();
+    if (!snap.exists) return null;
+    const d = snap.data()!;
+    const actSnap = await projectRef.collection("activities").limit(120).get();
+    const acts = actSnap.docs.map((x) => x.data() as Record<string, unknown>);
+    acts.sort(
+      (a, b) => (Number(a.totalFloat) ?? 99999) - (Number(b.totalFloat) ?? 99999)
+    );
+    const activitiesSample = acts.slice(0, 45).map((a) => ({
+      id: String(a.id ?? ""),
+      name: String(a.name ?? ""),
+      startDate: String(a.startDate ?? ""),
+      finishDate: String(a.finishDate ?? ""),
+      totalFloat: Number(a.totalFloat ?? 0),
+      isCritical: Boolean(a.isCritical),
+      dependencies: Array.isArray(a.dependencies) ? (a.dependencies as unknown[]).map(String) : [],
+      type: String(a.type ?? "task"),
+    }));
+    return {
+      projectName: String(d.projectName ?? projectId),
+      dataDate: String(d.dataDate ?? ""),
+      summary: (d.summary ?? {}) as Record<string, unknown>,
+      activitiesSample,
+    };
   }
 
   // API route for manual sync trigger
@@ -311,15 +359,68 @@ async function startServer() {
     res.json({ success: true });
   });
 
-  app.post("/api/workflow/upload", upload.single("file"), async (req: any, res) => {
+  function slugifyProjectId(raw: string, fallback: string) {
+    const s = raw.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    return s || fallback;
+  }
+
+  /** Recent manual uploads for a client/project (PRD manual ingest). */
+  app.get("/api/ingest/uploads", async (req, res) => {
+    if (!adminDb) return res.json({ uploads: [] });
+    const clientId = String(req.query.clientId || "default");
+    const projectId = String(req.query.projectId || "").trim();
+    if (!projectId) return res.status(400).json({ error: "projectId query parameter is required" });
+    try {
+      const snap = await adminDb
+        .collection("clients")
+        .doc(clientId)
+        .collection("projects")
+        .doc(projectId)
+        .collection("uploads")
+        .orderBy("uploadedAt", "desc")
+        .limit(Number(req.query.limit) || 20)
+        .get();
+      const uploads = snap.docs.map((d) => {
+        const data = d.data();
+        const uploadedAt = data.uploadedAt?.toDate?.() ?? null;
+        return {
+          id: d.id,
+          ...data,
+          uploadedAt: uploadedAt ? uploadedAt.toISOString() : null,
+        };
+      });
+      res.json({ uploads });
+    } catch (e: any) {
+      console.error("ingest/uploads list error:", e);
+      res.status(500).json({ error: e?.message || "Failed to list uploads" });
+    }
+  });
+
+  app.post("/api/workflow/upload", (req, res, next) => {
+    upload.single("file")(req, res, (err: any) => {
+      if (err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+          return res.status(413).json({ error: "File exceeds 52 MB limit" });
+        }
+        return res.status(400).json({ error: err.message });
+      }
+      if (err) return res.status(400).json({ error: err.message || "Upload rejected" });
+      next();
+    });
+  }, async (req: any, res) => {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
     const originalName: string = req.file.originalname;
-    const clientId: string = req.body.clientId || "default";
-    const projectId: string = req.body.projectId || originalName.replace(/\.[^/.]+$/, "").replace(/\s+/g, "-").toLowerCase();
+    const clientId: string = (req.body.clientId || "default").toString().trim() || "default";
+    const bodyProjectId = (req.body.projectId || "").toString().trim();
+    const bodyName = (req.body.projectName || "").toString().trim();
+    const fallbackSlug = originalName.replace(/\.[^/.]+$/, "").replace(/\s+/g, "-").toLowerCase();
+    const projectId = slugifyProjectId(bodyProjectId || bodyName, fallbackSlug);
     const ext = originalName.split(".").pop()?.toLowerCase();
+    const uploadId = randomUUID();
+    const sha256 = createHash("sha256").update(req.file.buffer).digest("hex");
 
-    console.log(`Upload received: ${originalName} | client: ${clientId} | project: ${projectId}`);
+    console.log(`Upload received: ${originalName} | client: ${clientId} | project: ${projectId} | uploadId: ${uploadId}`);
 
     // ── Emit immediate "received" log ──
     const receivedLog = {
@@ -334,8 +435,22 @@ async function startServer() {
     };
     io.emit("webhook_update", receivedLog);
 
+    let storagePath: string | null = null;
+    if (adminBucket) {
+      storagePath = `clients/${clientId}/projects/${projectId}/uploads/${uploadId}/${encodeURIComponent(originalName)}`;
+      try {
+        await adminBucket.file(storagePath).save(req.file.buffer, {
+          contentType: req.file.mimetype || "application/octet-stream",
+          resumable: false,
+        });
+      } catch (se: any) {
+        console.warn("Firebase Storage upload failed (metadata still recorded if Firestore available):", se?.message);
+        storagePath = null;
+      }
+    }
+
     try {
-      let parsed = null;
+      let parsed: ReturnType<typeof parseXer> | null = null;
 
       // ── XER parsing ──
       if (ext === "xer") {
@@ -344,7 +459,7 @@ async function startServer() {
         console.log(`XER parsed: ${parsed.projectName} | ${parsed.summary.totalActivities} activities | SQI: ${parsed.summary.qualityScore}`);
       }
 
-      // ── Write to Firestore ──
+      // ── Write to Firestore (project summary + activities) ──
       if (parsed && adminDb) {
         const projectRef = adminDb
           .collection("clients")
@@ -352,7 +467,6 @@ async function startServer() {
           .collection("projects")
           .doc(projectId);
 
-        // Write summary metrics (dashboard KPI cards read from here)
         await projectRef.set({
           projectName: parsed.projectName,
           dataDate: parsed.dataDate,
@@ -364,7 +478,6 @@ async function startServer() {
           sourceFile: originalName,
         }, { merge: true });
 
-        // Write activities in batches of 400 (Firestore batch limit is 500)
         const BATCH_SIZE = 400;
         for (let i = 0; i < parsed.activities.length; i += BATCH_SIZE) {
           const batch = adminDb.batch();
@@ -379,6 +492,30 @@ async function startServer() {
         console.log(`Firestore write complete — ${parsed.activities.length} activities saved`);
       } else if (parsed && !adminDb) {
         console.warn("Firestore not available — parsed data not persisted");
+      }
+
+      // ── Upload artifact record (PRD manual ingest) ──
+      if (adminDb) {
+        const projectRef = adminDb
+          .collection("clients")
+          .doc(clientId)
+          .collection("projects")
+          .doc(projectId);
+        let status: string;
+        if (ext === "xer") status = parsed ? "parsed" : "stored";
+        else status = "stored";
+        await projectRef.collection("uploads").doc(uploadId).set({
+          originalName,
+          storagePath,
+          sha256,
+          mimeType: req.file.mimetype || "application/octet-stream",
+          sizeBytes: req.file.size,
+          uploadedAt: FieldValue.serverTimestamp(),
+          uploadedBy: (req.body.uploadedBy || "system").toString(),
+          status,
+          parserVersion: parsed ? "xerParser-v1" : null,
+          activityCount: parsed?.summary?.totalActivities ?? null,
+        });
       }
 
       // ── Emit success log ──
@@ -398,8 +535,12 @@ async function startServer() {
 
       res.json({
         success: true,
+        uploadId,
         fileName: originalName,
+        clientId,
         projectId,
+        sha256,
+        storagePath,
         parsed: parsed ? {
           projectName: parsed.projectName,
           totalActivities: parsed.summary.totalActivities,
@@ -412,6 +553,26 @@ async function startServer() {
 
     } catch (error: any) {
       console.error("Upload processing error:", error);
+      if (adminDb) {
+        try {
+          const projectRef = adminDb.collection("clients").doc(clientId).collection("projects").doc(projectId);
+          await projectRef.collection("uploads").doc(uploadId).set({
+            originalName,
+            storagePath,
+            sha256,
+            mimeType: req.file.mimetype || "application/octet-stream",
+            sizeBytes: req.file.size,
+            uploadedAt: FieldValue.serverTimestamp(),
+            uploadedBy: (req.body.uploadedBy || "system").toString(),
+            status: "parse_failed",
+            parserVersion: ext === "xer" ? "xerParser-v1" : null,
+            activityCount: null,
+            error: String(error?.message || error),
+          }, { merge: true });
+        } catch (fe) {
+          console.warn("Failed to write parse_failed upload doc:", fe);
+        }
+      }
       io.emit("webhook_update", {
         id: Date.now(),
         time: new Date().toISOString().replace("T", " ").substring(0, 19),
@@ -470,7 +631,7 @@ ${logText}`;
 
     try {
       const response = await anthropic.messages.create({
-        model: MODEL,
+        model: ANTHROPIC_MODEL,
         max_tokens: 1000,
         messages: [{ role: "user", content: prompt }],
       });
@@ -528,7 +689,7 @@ ${metricsText}`;
 
     try {
       const response = await anthropic.messages.create({
-        model: MODEL,
+        model: ANTHROPIC_MODEL,
         max_tokens: 1500,
         messages: [{ role: "user", content: prompt }],
       });
@@ -538,6 +699,147 @@ ${metricsText}`;
     } catch (error: any) {
       console.error("Claude Risk Analysis Error:", error);
       res.status(500).json({ error: error?.message || "Risk analysis failed" });
+    }
+  });
+
+  // --- P1: Multi-client portfolio (schedule health across engagements) ---
+  app.get("/api/portfolio/summary", async (_req, res) => {
+    if (!adminDb) {
+      return res.json({ engagements: [], generatedAt: new Date().toISOString(), note: "Firestore not configured" });
+    }
+    try {
+      const clientsSnap = await adminDb.collection("clients").get();
+      const engagements: any[] = [];
+      for (const c of clientsSnap.docs) {
+        const clientId = c.id;
+        const cdata = c.data() || {};
+        const projectsSnap = await adminDb.collection("clients").doc(clientId).collection("projects").get();
+        for (const p of projectsSnap.docs) {
+          const d = p.data() || {};
+          const s = (d.summary ?? {}) as Record<string, unknown>;
+          engagements.push({
+            clientId,
+            clientLabel: typeof cdata.displayName === "string" ? cdata.displayName : clientId,
+            engagementStatus: typeof cdata.engagementStatus === "string" ? cdata.engagementStatus : "active",
+            projectId: p.id,
+            projectName: typeof d.projectName === "string" ? d.projectName : p.id,
+            dataDate: d.dataDate ?? null,
+            ingestedAt: d.ingestedAt ?? null,
+            sourceFile: d.sourceFile ?? null,
+            health: {
+              qualityScore: s.qualityScore ?? null,
+              spi: s.spi ?? null,
+              cpi: s.cpi ?? null,
+              totalActivities: s.totalActivities ?? null,
+              criticalActivities: s.criticalActivities ?? null,
+              percentComplete: s.percentComplete ?? null,
+            },
+            summarySnapshot: d.summary ?? null,
+          });
+        }
+      }
+      engagements.sort((a, b) => {
+        const ta = a.ingestedAt ? new Date(String(a.ingestedAt)).getTime() : 0;
+        const tb = b.ingestedAt ? new Date(String(b.ingestedAt)).getTime() : 0;
+        return tb - ta;
+      });
+      res.json({ engagements, generatedAt: new Date().toISOString() });
+    } catch (e: any) {
+      console.error("portfolio/summary", e);
+      res.status(500).json({ error: e?.message || "Portfolio read failed" });
+    }
+  });
+
+  // --- P1: BIR™ — Claude analysis wired to XER parser output (Firestore or inline JSON) ---
+  app.post("/api/ai/bir", async (req, res) => {
+    if (!anthropic) return res.status(500).json({ error: "Anthropic API key not configured" });
+    const clientContext = typeof req.body?.clientContext === "string" ? req.body.clientContext : undefined;
+    let payload: {
+      projectName: string;
+      dataDate: string;
+      summary: Record<string, unknown>;
+      activitiesSample: Array<Record<string, unknown>>;
+    } | null = null;
+
+    if (req.body?.parsedPayload && typeof req.body.parsedPayload === "object") {
+      const pp = req.body.parsedPayload;
+      payload = {
+        projectName: String(pp.projectName ?? "Project"),
+        dataDate: String(pp.dataDate ?? ""),
+        summary: (pp.summary ?? {}) as Record<string, unknown>,
+        activitiesSample: Array.isArray(pp.activitiesSample) ? pp.activitiesSample : [],
+      };
+    } else {
+      const clientId = String(req.body?.clientId ?? "").trim();
+      const projectId = String(req.body?.projectId ?? "").trim();
+      if (!clientId || !projectId) {
+        return res.status(400).json({
+          error: "Provide clientId + projectId, or parsedPayload { projectName, dataDate, summary, activitiesSample }",
+        });
+      }
+      payload = await loadBirPayloadFromFirestore(clientId, projectId);
+      if (!payload) return res.status(404).json({ error: "Project not found in Firestore" });
+    }
+
+    const prompt = buildBirPrompt({
+      projectName: payload.projectName,
+      dataDate: payload.dataDate,
+      summary: payload.summary,
+      activitiesSample: payload.activitiesSample as any,
+      clientContext,
+    });
+
+    try {
+      const response = await anthropic.messages.create({
+        model: ANTHROPIC_MODEL,
+        max_tokens: 4096,
+        messages: [{ role: "user", content: prompt }],
+      });
+      const analysis = extractAnthropicText(response) || "No analysis generated.";
+      res.json({ analysis, model: ANTHROPIC_MODEL, methodology: "BIR™" });
+    } catch (error: any) {
+      console.error("BIR error:", error);
+      res.status(500).json({ error: error?.message || "BIR analysis failed" });
+    }
+  });
+
+  // --- P1: TRIAGE-IMPACT™ — structured TIA-style report generation ---
+  app.post("/api/ai/triage-impact-report", async (req, res) => {
+    if (!anthropic) return res.status(500).json({ error: "Anthropic API key not configured" });
+    const projectName = String(req.body?.projectName ?? "").trim();
+    if (!projectName) return res.status(400).json({ error: "projectName is required" });
+    const scheduleFacts =
+      req.body?.scheduleFacts && typeof req.body.scheduleFacts === "object"
+        ? req.body.scheduleFacts
+        : {};
+    const impactingEvents = Array.isArray(req.body?.impactingEvents) ? req.body.impactingEvents : [];
+    if (impactingEvents.length === 0) {
+      return res.status(400).json({ error: "impactingEvents array is required (at least one event)" });
+    }
+
+    const prompt = buildTriageImpactPrompt({
+      projectName,
+      scheduleFacts,
+      impactingEvents,
+      ownerNarrative: typeof req.body?.ownerNarrative === "string" ? req.body.ownerNarrative : undefined,
+      analysisWindow:
+        req.body?.analysisWindow && typeof req.body.analysisWindow === "object"
+          ? req.body.analysisWindow
+          : undefined,
+      reliefSought: typeof req.body?.reliefSought === "string" ? req.body.reliefSought : undefined,
+    });
+
+    try {
+      const response = await anthropic.messages.create({
+        model: ANTHROPIC_MODEL,
+        max_tokens: 6144,
+        messages: [{ role: "user", content: prompt }],
+      });
+      const report = extractAnthropicText(response) || "No report generated.";
+      res.json({ report, model: ANTHROPIC_MODEL, methodology: "TRIAGE-IMPACT™" });
+    } catch (error: any) {
+      console.error("TRIAGE-IMPACT error:", error);
+      res.status(500).json({ error: error?.message || "TRIAGE-IMPACT report failed" });
     }
   });
 

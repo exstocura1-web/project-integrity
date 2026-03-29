@@ -1,0 +1,14 @@
+{
+  "hosting": {
+    "site": "exstocura-site",
+    "public": "dist",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [{ "source": "**", "destination": "/index.html" }]
+  },
+  "firestore": {
+    "database": "ai-studio-47153a80-b629-458d-9c40-b59544d46e9c",
+    "location": "us-east1",
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  }
+}

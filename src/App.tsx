@@ -31,7 +31,8 @@ import {
   Cpu,
   Check,
   Kanban,
-  Network
+  Network,
+  LayoutGrid
 } from 'lucide-react';
 import { 
   LineChart, 
@@ -147,7 +148,13 @@ const MOCK_LOGS = [
   { id: 7, time: "2026-03-14 03:00:00", source: "System", projectName: "Global", action: "Auto-Sync", status: "Success", result: "Completed in 4.1s", isPending: false },
 ];
 
-import { summarizeLogs, analyzeScheduleRisk } from './services/claudeService';
+import {
+  summarizeLogs,
+  analyzeScheduleRisk,
+  fetchPortfolioEngagements,
+  runBirAnalysis,
+  runTriageImpactReport,
+} from './services/claudeService';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 const SOCKET_URL = (import.meta.env.VITE_SOCKET_URL || '').replace(/\/$/, '');
@@ -161,6 +168,30 @@ function apiFetch(path: string, init?: RequestInit) {
     ...init,
     credentials: 'include',
   });
+}
+
+/** Must match server `slugifyProjectId` for manual ingest API. */
+function slugifyProjectIdForUpload(raw: string, fallback: string) {
+  const s = raw.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return s || fallback;
+}
+
+/** One line per event: optional "YYYY-MM-DD | description" or free text. */
+function parseTriageEventsLines(raw: string): { description: string; date?: string; source?: string }[] {
+  return raw
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const pipe = line.indexOf("|");
+      if (pipe > 0) {
+        const left = line.slice(0, pipe).trim();
+        const right = line.slice(pipe + 1).trim();
+        const looksLikeDate = /^\d{4}-\d{2}-\d{2}/.test(left);
+        if (looksLikeDate) return { date: left, description: right || left, source: "Analyst" };
+      }
+      return { description: line, source: "Analyst" };
+    });
 }
 
 export default function App() {
@@ -217,6 +248,22 @@ export default function App() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isDraggingLocal, setIsDraggingLocal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [manualIngestClientId, setManualIngestClientId] = useState("default");
+  const [ingestUploadHistory, setIngestUploadHistory] = useState<any[]>([]);
+  const [ingestHistoryLoading, setIngestHistoryLoading] = useState(false);
+
+  const [portfolioData, setPortfolioData] = useState<{ engagements: any[] } | null>(null);
+  const [portfolioLoading, setPortfolioLoading] = useState(false);
+  const [portfolioErr, setPortfolioErr] = useState<string | null>(null);
+  const [selectedEngagement, setSelectedEngagement] = useState<any | null>(null);
+  const [triageEventsText, setTriageEventsText] = useState(
+    "2026-03-01 | Owner-directed suspension of Area B concrete pours\n2026-03-15 | Revised drawing set R3 issued — structural"
+  );
+  const [triageOwnerNotes, setTriageOwnerNotes] = useState("");
+  const [methodologyOutput, setMethodologyOutput] = useState<string | null>(null);
+  const [methodologyMeta, setMethodologyMeta] = useState<string | null>(null);
+  const [birRunning, setBirRunning] = useState(false);
+  const [triageRunning, setTriageRunning] = useState(false);
 
   // Cancellation State
   const [activeTask, setActiveTask] = useState<{ source: string, action: string } | null>(null);
@@ -464,6 +511,26 @@ try {
       unsubscribeRules();
     };
   }, [user]);
+
+  useEffect(() => {
+    if (activeTab !== "portfolio") return;
+    let cancelled = false;
+    (async () => {
+      setPortfolioLoading(true);
+      setPortfolioErr(null);
+      try {
+        const data = await fetchPortfolioEngagements();
+        if (!cancelled) setPortfolioData({ engagements: data.engagements || [] });
+      } catch (e: any) {
+        if (!cancelled) setPortfolioErr(e?.message || "Portfolio load failed");
+      } finally {
+        if (!cancelled) setPortfolioLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab]);
 
   const handleLogin = async () => {
     try {
@@ -715,8 +782,30 @@ try {
     }
   };
 
+  const refreshIngestHistory = async () => {
+    const projectName = projectNameInput || "Manual Ingestion";
+    const projectSlug = slugifyProjectIdForUpload(projectName, "manual-ingest");
+    setIngestHistoryLoading(true);
+    try {
+      const q = new URLSearchParams({
+        clientId: manualIngestClientId.trim() || "default",
+        projectId: projectSlug,
+        limit: "20",
+      });
+      const res = await apiFetch(`/api/ingest/uploads?${q.toString()}`);
+      const data = await res.json();
+      setIngestUploadHistory(Array.isArray(data.uploads) ? data.uploads : []);
+    } catch (e) {
+      console.error("ingest history", e);
+      setIngestUploadHistory([]);
+    } finally {
+      setIngestHistoryLoading(false);
+    }
+  };
+
   const processLocalFiles = async (files: File[]) => {
     const projectName = projectNameInput || "Manual Ingestion";
+    const projectSlug = slugifyProjectIdForUpload(projectName, "manual-ingest");
     setIsIngesting(true);
     setUploadProgress(0);
     
@@ -726,11 +815,18 @@ try {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('projectName', projectName);
+        formData.append('clientId', manualIngestClientId.trim() || "default");
+        formData.append('projectId', projectSlug);
         
-        await fetch(apiUrl('/api/workflow/upload'), {
+        const up = await fetch(apiUrl('/api/workflow/upload'), {
           method: 'POST',
-          body: formData
+          body: formData,
+          credentials: 'include',
         });
+        if (!up.ok) {
+          const errText = await up.text().catch(() => up.statusText);
+          throw new Error(errText || `Upload failed (${up.status})`);
+        }
         
         // Update logs
         const newLog = {
@@ -747,6 +843,7 @@ try {
         
         setUploadProgress(((i + 1) / files.length) * 100);
       }
+      await refreshIngestHistory();
       setActiveTab('logs');
     } catch (e) {
       console.error("Local upload failed", e);
@@ -1142,6 +1239,12 @@ try {
               onClick={() => setActiveTab('dashboard')}
             />
             <NavItem 
+              icon={<LayoutGrid className="w-4 h-4" />} 
+              label="Portfolio" 
+              active={activeTab === 'portfolio'} 
+              onClick={() => setActiveTab('portfolio')}
+            />
+            <NavItem 
               icon={<BarChart3 className="w-4 h-4" />} 
               label="Project Analytics" 
               active={activeTab === 'analytics'} 
@@ -1480,6 +1583,230 @@ try {
               </div>
             </div>
           </div>
+        )}
+
+        {activeTab === "portfolio" && (
+          <section className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-[#141414] pb-4">
+              <div>
+                <h3 className="font-serif italic text-3xl">Multi-Client Portfolio</h3>
+                <p className="font-mono text-[10px] uppercase tracking-widest opacity-50 mt-2">
+                  Schedule health from Firestore (XER ingest) — BIR™ and TRIAGE-IMPACT™ via Claude Sonnet
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  setPortfolioLoading(true);
+                  setPortfolioErr(null);
+                  try {
+                    const data = await fetchPortfolioEngagements();
+                    setPortfolioData({ engagements: data.engagements || [] });
+                  } catch (e: any) {
+                    setPortfolioErr(e?.message || "Refresh failed");
+                  } finally {
+                    setPortfolioLoading(false);
+                  }
+                }}
+                className="px-4 py-2 border border-[#141414] font-mono text-[10px] uppercase tracking-widest hover:bg-[#141414] hover:text-[#E4E3E0] transition-colors"
+              >
+                {portfolioLoading ? "Loading…" : "Refresh data"}
+              </button>
+            </div>
+
+            {portfolioErr && (
+              <div className="p-4 border border-red-300 bg-red-50 text-red-800 font-mono text-xs">{portfolioErr}</div>
+            )}
+
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+              <div className="xl:col-span-2 border border-[#141414] bg-white overflow-x-auto">
+                <table className="w-full text-left font-mono text-[11px]">
+                  <thead>
+                    <tr className="border-b border-[#141414] bg-[#141414]/5 uppercase tracking-widest text-[9px]">
+                      <th className="p-3">Client</th>
+                      <th className="p-3">Project</th>
+                      <th className="p-3">SQI</th>
+                      <th className="p-3">SPI</th>
+                      <th className="p-3">CPI</th>
+                      <th className="p-3">Acts</th>
+                      <th className="p-3">Crit</th>
+                      <th className="p-3">Ingested</th>
+                      <th className="p-3">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {!portfolioData?.engagements?.length ? (
+                      <tr>
+                        <td colSpan={9} className="p-8 text-center opacity-50 italic font-serif text-sm">
+                          {portfolioLoading ? "Loading engagements…" : "No projects in Firestore yet — upload a XER from Filing Cabinet."}
+                        </td>
+                      </tr>
+                    ) : (
+                      portfolioData.engagements.map((row: any) => {
+                        const h = row.health || {};
+                        const selected =
+                          selectedEngagement?.clientId === row.clientId && selectedEngagement?.projectId === row.projectId;
+                        const sq = h.qualityScore;
+                        const sqClass =
+                          sq == null ? "" : sq < 65 ? "text-red-600 font-bold" : sq < 80 ? "text-amber-700" : "text-emerald-700";
+                        return (
+                          <tr
+                            key={`${row.clientId}-${row.projectId}`}
+                            onClick={() => {
+                              setSelectedEngagement(row);
+                              setMethodologyOutput(null);
+                              setMethodologyMeta(null);
+                            }}
+                            className={cn(
+                              "border-b border-[#141414]/10 cursor-pointer hover:bg-[#141414]/5",
+                              selected && "bg-emerald-50"
+                            )}
+                          >
+                            <td className="p-3 font-bold">{row.clientLabel || row.clientId}</td>
+                            <td className="p-3">{row.projectName}</td>
+                            <td className={cn("p-3", sqClass)}>{h.qualityScore ?? "—"}</td>
+                            <td className="p-3">{h.spi ?? "—"}</td>
+                            <td className="p-3">{h.cpi ?? "—"}</td>
+                            <td className="p-3">{h.totalActivities ?? "—"}</td>
+                            <td className="p-3">{h.criticalActivities ?? "—"}</td>
+                            <td className="p-3 text-[9px] opacity-70 max-w-[120px] truncate" title={row.ingestedAt}>
+                              {row.ingestedAt ? String(row.ingestedAt).slice(0, 16) : "—"}
+                            </td>
+                            <td className="p-3 text-[9px] uppercase">{row.engagementStatus || "active"}</td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="space-y-4">
+                <div className="border border-[#141414] bg-[#141414] text-[#E4E3E0] p-6">
+                  <h4 className="font-serif italic text-lg mb-2">Methodology</h4>
+                  <p className="font-mono text-[9px] uppercase tracking-widest opacity-60 leading-relaxed">
+                    Select a row, then run BIR™ (bid schedule intelligence) or TRIAGE-IMPACT™ (TIA-style narrative). Model:{" "}
+                    <code className="text-emerald-400">claude-sonnet-4-20250514</code>
+                  </p>
+                  {!selectedEngagement ? (
+                    <p className="mt-4 font-mono text-[10px] opacity-50">No row selected.</p>
+                  ) : (
+                    <div className="mt-4 space-y-2 font-mono text-[10px]">
+                      <div>
+                        <span className="opacity-50">Client:</span> {selectedEngagement.clientId}
+                      </div>
+                      <div>
+                        <span className="opacity-50">Project id:</span> {selectedEngagement.projectId}
+                      </div>
+                      <div className="flex flex-col gap-2 pt-2">
+                        <button
+                          type="button"
+                          disabled={birRunning}
+                          onClick={async () => {
+                            setBirRunning(true);
+                            setMethodologyOutput(null);
+                            setMethodologyMeta(null);
+                            try {
+                              const r = await runBirAnalysis({
+                                clientId: selectedEngagement.clientId,
+                                projectId: selectedEngagement.projectId,
+                                clientContext: `Portfolio engagement: ${selectedEngagement.clientLabel || selectedEngagement.clientId} — ${selectedEngagement.projectName}`,
+                              });
+                              setMethodologyOutput(r.analysis);
+                              setMethodologyMeta(`${r.methodology} · ${r.model}`);
+                            } catch (e: any) {
+                              setMethodologyOutput(`**Error:** ${e?.message || e}`);
+                            } finally {
+                              setBirRunning(false);
+                            }
+                          }}
+                          className="w-full py-2 bg-emerald-600 text-white uppercase tracking-widest text-[9px] hover:bg-emerald-500 disabled:opacity-40"
+                        >
+                          {birRunning ? "Running BIR™…" : "Run BIR™ analysis"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="border border-[#141414] bg-white p-6 space-y-3">
+                  <h4 className="font-mono text-[10px] uppercase tracking-widest font-bold">TRIAGE-IMPACT™ inputs</h4>
+                  <label className="block text-[9px] font-mono uppercase opacity-50">Impacting events (one per line)</label>
+                  <textarea
+                    value={triageEventsText}
+                    onChange={(e) => setTriageEventsText(e.target.value)}
+                    rows={5}
+                    className="w-full p-2 border border-[#141414] font-mono text-[10px] bg-transparent"
+                  />
+                  <label className="block text-[9px] font-mono uppercase opacity-50">Owner narrative (optional)</label>
+                  <textarea
+                    value={triageOwnerNotes}
+                    onChange={(e) => setTriageOwnerNotes(e.target.value)}
+                    rows={3}
+                    placeholder="Context for CO / delay dialogue…"
+                    className="w-full p-2 border border-[#141414] font-mono text-[10px] bg-transparent"
+                  />
+                  <button
+                    type="button"
+                    disabled={triageRunning || !selectedEngagement}
+                    onClick={async () => {
+                      if (!selectedEngagement) return;
+                      const events = parseTriageEventsLines(triageEventsText);
+                      if (!events.length) {
+                        setMethodologyOutput("**Error:** Add at least one impacting event line.");
+                        return;
+                      }
+                      setTriageRunning(true);
+                      setMethodologyOutput(null);
+                      setMethodologyMeta(null);
+                      try {
+                        const scheduleFacts = {
+                          ...(selectedEngagement.summarySnapshot && typeof selectedEngagement.summarySnapshot === "object"
+                            ? selectedEngagement.summarySnapshot
+                            : {}),
+                          dataDate: selectedEngagement.dataDate,
+                          ingestedAt: selectedEngagement.ingestedAt,
+                          sourceFile: selectedEngagement.sourceFile,
+                          portfolioHealth: selectedEngagement.health,
+                        };
+                        const r = await runTriageImpactReport({
+                          projectName: selectedEngagement.projectName,
+                          scheduleFacts,
+                          impactingEvents: events,
+                          ownerNarrative: triageOwnerNotes.trim() || undefined,
+                          analysisWindow: selectedEngagement.dataDate
+                            ? { end: String(selectedEngagement.dataDate) }
+                            : undefined,
+                        });
+                        setMethodologyOutput(r.report);
+                        setMethodologyMeta(`${r.methodology} · ${r.model}`);
+                      } catch (e: any) {
+                        setMethodologyOutput(`**Error:** ${e?.message || e}`);
+                      } finally {
+                        setTriageRunning(false);
+                      }
+                    }}
+                    className="w-full py-2 border border-[#141414] font-mono text-[9px] uppercase tracking-widest hover:bg-[#141414] hover:text-white disabled:opacity-40"
+                  >
+                    {triageRunning ? "Generating report…" : "Generate TRIAGE-IMPACT™ report"}
+                  </button>
+                </div>
+
+                {methodologyOutput && (
+                  <div className="border border-[#141414] bg-white p-4 max-h-[480px] overflow-y-auto">
+                    {methodologyMeta && (
+                      <div className="font-mono text-[9px] uppercase tracking-widest text-emerald-700 mb-2 border-b border-[#141414]/10 pb-2">
+                        {methodologyMeta}
+                      </div>
+                    )}
+                    <pre className="whitespace-pre-wrap font-mono text-[10px] leading-relaxed text-[#141414]">
+                      {methodologyOutput}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
         )}
 
         {/* Integrations Section */}
@@ -3721,6 +4048,22 @@ try {
               <div className="flex flex-col space-y-6">
                 <div className="border border-[#141414] bg-white p-6">
                   <label className="block text-[10px] font-mono uppercase tracking-widest opacity-50 mb-2">
+                    Client ID (Firestore)
+                  </label>
+                  <input
+                    type="text"
+                    value={manualIngestClientId}
+                    onChange={(e) => setManualIngestClientId(e.target.value)}
+                    placeholder="e.g. default, tdi"
+                    className="w-full p-3 border border-[#141414] font-mono text-xs bg-transparent focus:outline-none focus:ring-1 focus:ring-[#141414]"
+                  />
+                  <p className="text-[9px] font-mono opacity-40 mt-2 uppercase tracking-widest">
+                    Maps to clients / clientId / projects / … in Firestore (manual ingest PRD).
+                  </p>
+                </div>
+
+                <div className="border border-[#141414] bg-white p-6">
+                  <label className="block text-[10px] font-mono uppercase tracking-widest opacity-50 mb-2">
                     Project Name
                   </label>
                   <div className="flex gap-2">
@@ -3822,13 +4165,14 @@ try {
                           ref={fileInputRef} 
                           className="hidden" 
                           multiple 
-                          accept=".xer"
+                          accept=".xer,.csv,application/octet-stream,text/csv"
                           onChange={handleFileSelect}
                         />
                         <div>
                           <h4 className="font-serif italic text-2xl mb-2">Ingestion Zone</h4>
                           <p className="font-mono text-[10px] uppercase tracking-widest opacity-50 leading-relaxed">
-                            Drag XER files from the Filing Cabinet or local computer here, or <button onClick={() => fileInputRef.current?.click()} className="underline hover:text-white transition-colors">click to browse</button>
+                            Drag <strong className="text-white/80">.xer</strong> or <strong className="text-white/80">.csv</strong> here, or{' '}
+                            <button type="button" onClick={() => fileInputRef.current?.click()} className="underline hover:text-white transition-colors">click to browse</button>
                           </p>
                         </div>
                       </motion.div>
@@ -3844,6 +4188,40 @@ try {
                     <ProtocolItem label="Cost Normalization" active />
                     <ProtocolItem label="Governance Check" active />
                   </ul>
+                </div>
+
+                <div className="p-6 border border-[#141414] bg-white space-y-3">
+                  <div className="flex items-center justify-between border-b border-[#141414]/10 pb-2">
+                    <h5 className="font-mono text-[10px] uppercase tracking-widest font-bold">Recent uploads (API)</h5>
+                    <button
+                      type="button"
+                      onClick={refreshIngestHistory}
+                      disabled={ingestHistoryLoading || !projectNameInput.trim()}
+                      className="px-3 py-1 border border-[#141414] font-mono text-[9px] uppercase tracking-widest hover:bg-[#141414] hover:text-white disabled:opacity-30 transition-colors"
+                    >
+                      {ingestHistoryLoading ? "Loading…" : "Refresh"}
+                    </button>
+                  </div>
+                  {!projectNameInput.trim() ? (
+                    <p className="text-[10px] font-mono opacity-40">Enter a project name to load upload history for that slug.</p>
+                  ) : ingestUploadHistory.length === 0 ? (
+                    <p className="text-[10px] font-mono opacity-40">No records yet — upload a file or refresh after ingest.</p>
+                  ) : (
+                    <ul className="space-y-2 max-h-48 overflow-y-auto">
+                      {ingestUploadHistory.map((u) => (
+                        <li key={u.id} className="text-[10px] font-mono border border-[#141414]/15 p-2">
+                          <div className="font-bold truncate">{u.originalName || u.id}</div>
+                          <div className="opacity-60 mt-1">
+                            {u.status} · {u.sizeBytes != null ? `${(u.sizeBytes / 1024).toFixed(1)} KB` : "—"}
+                            {u.activityCount != null ? ` · ${u.activityCount} activities` : ""}
+                          </div>
+                          <div className="opacity-40 truncate mt-0.5" title={u.sha256}>
+                            {u.uploadedAt || "—"}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               </div>
             </div>

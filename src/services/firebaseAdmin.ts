@@ -14,7 +14,7 @@ import { initializeApp, cert, getApps, App } from "firebase-admin/app";
 import { getFirestore, Firestore } from "firebase-admin/firestore";
 import { readFileSync } from "fs";
 import { resolve } from "path";
-import firebaseConfig from "../firebase-applet-config.json";
+import firebaseConfig from "../../firebase-applet-config.json";
 
 let adminApp: App;
 let adminDb: Firestore;
