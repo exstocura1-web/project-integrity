@@ -3,6 +3,9 @@ builder = "nixpacks"
 buildCommand = "npm install && npm run build"
 
 [deploy]
-startCommand = "tsx server.ts"
+# Use npm so ./node_modules/.bin/tsx is on PATH (avoids bare `tsx` not found on Linux)
+startCommand = "npm run start"
+healthcheckPath = "/api/health"
+healthcheckTimeout = 180
 restartPolicyType = "on_failure"
-restartPolicyMaxRetries = 3
+restartPolicyMaxRetries = 5

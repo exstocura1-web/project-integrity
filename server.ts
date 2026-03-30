@@ -998,4 +998,7 @@ ${metricsText}`;
   });
 }
 
-startServer();
+startServer().catch((err) => {
+  console.error("FATAL: startServer()", err);
+  process.exit(1);
+});
