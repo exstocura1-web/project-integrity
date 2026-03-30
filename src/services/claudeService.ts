@@ -4,7 +4,11 @@ type BirResponse = { analysis: string; model: string; methodology: string };
 type TriageResponse = { report: string; model: string; methodology: string };
 type PortfolioResponse = { engagements: any[]; generatedAt?: string; note?: string };
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+const API_BASE_URL = (
+  import.meta.env.VITE_API_BASE_URL ||
+  import.meta.env.VITE_API_URL ||
+  ""
+).replace(/\/$/, "");
 
 function apiUrl(path: string): string {
   return API_BASE_URL ? `${API_BASE_URL}${path}` : path;
