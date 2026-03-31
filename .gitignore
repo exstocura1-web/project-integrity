@@ -9,3 +9,16 @@ Thumbs.db
 packages/
 WinSCPnet.dll
 nuget.exe
+
+# Python/runtime caches
+__pycache__/
+*.py[cod]
+
+# Local deployment/link artifacts
+.vercel/
+
+# Test outputs and transient artifacts
+n8n-workflows/screenshots/
+n8n-workflows/live_test_log.txt
+n8n-workflows/ui_test_log.txt
+n8n-workflows/_stress_*.json
