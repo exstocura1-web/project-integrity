@@ -1,0 +1,11 @@
+# Default owner for the repository
+* @exstocura1-web
+
+# Application surface
+/project-integrity/ @exstocura1-web
+/bir-demo/ @exstocura1-web
+
+# Automation and operations
+/n8n-workflows/ @exstocura1-web
+/n8n/ @exstocura1-web
+/self-host/ @exstocura1-web
