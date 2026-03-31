@@ -1,0 +1,32 @@
+﻿[
+    {
+        "id":  "5ZJ1NEIYpIUg2qDy",
+        "name":  "Exsto Cura Email Triage v2",
+        "active":  true
+    },
+    {
+        "id":  "8Lg3lsjoraEUizfw",
+        "name":  "Exsto Cura — SmartPM Market Intelligence \u0026 Outreach Agent",
+        "active":  true
+    },
+    {
+        "id":  "DbRCcPqBatSFLR27",
+        "name":  "Exsto Cura — Invoice \u0026 Payment Agent",
+        "active":  true
+    },
+    {
+        "id":  "TtSLiFqydMLODkHI",
+        "name":  "Exsto Cura Weekly Digest",
+        "active":  true
+    },
+    {
+        "id":  "WVm9C69CVecMxh6c",
+        "name":  "Exsto Cura — Monthly Report Pipeline Agent",
+        "active":  true
+    },
+    {
+        "id":  "lqV394WRa4wPRCmd",
+        "name":  "Exsto Cura — Prospect Intelligence Agent",
+        "active":  true
+    }
+]

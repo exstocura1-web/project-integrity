@@ -1,0 +1,681 @@
+{
+  "updatedAt": "2026-03-29T17:37:32.204Z",
+  "createdAt": "2026-03-29T17:22:57.451Z",
+  "id": "WVm9C69CVecMxh6c",
+  "name": "Exsto Cura — Monthly Report Pipeline Agent",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 1 * *"
+            }
+          ]
+        }
+      },
+      "name": "Schedule — 1st of Month 8am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        300
+      ],
+      "id": "719fb573-a78d-40d8-bf64-01e9ce1d57f3"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── CLIENT ROSTER ──────────────────────────────────────────\n// Add each active client here. SmartPM project IDs from your\n// SmartPM account dashboard under Settings > Projects.\n\nconst clients = [\n  {\n    name: 'TDI — Transmission Developers Inc',\n    project_id: 'SMARTPM_PROJECT_ID_TDI',\n    contact: 'Scott',\n    report_type: 'Owner Advisory',\n    contract_value: 'Retainer'\n  },\n  // Add additional clients here as you onboard them:\n  // { name: 'Client 2', project_id: 'SMARTPM_PROJECT_ID_2', ... }\n];\n\nconst month = new Date().toLocaleString('default', { month: 'long' });\nconst year = new Date().getFullYear();\n\nreturn clients.map(c => ({ json: { ...c, report_month: month, report_year: year, report_period: `${month} ${year}` } }));"
+      },
+      "name": "Load Client Roster",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        300
+      ],
+      "id": "32678af2-fc8e-46ca-b5ed-900dbefff6c9"
+    },
+    {
+      "parameters": {
+        "url": "=https://app.smartpm.com/api/v1/projects/{{ $json.project_id }}/schedule-metrics",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "name": "SmartPM — Pull Schedule Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        720,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "48RGxhjkOn6nkAnH",
+          "name": "Anthropic API Key"
+        }
+      },
+      "notes": "Replace with actual SmartPM API endpoint — confirm with Billy Upchurch in your next session",
+      "id": "7ce2dc09-bef5-4c4d-a02e-ce32739df47d"
+    },
+    {
+      "parameters": {
+        "url": "=https://app.smartpm.com/api/v1/projects/{{ $('Load Client Roster').item.json.project_id }}/critical-path",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "name": "SmartPM — Pull Critical Path Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        720,
+        480
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "48RGxhjkOn6nkAnH",
+          "name": "Anthropic API Key"
+        }
+      },
+      "id": "48194cc0-97d7-4036-a361-7de60f037d41"
+    },
+    {
+      "parameters": {
+        "model": "claude-haiku-3-20250307",
+        "messages": {
+          "values": [
+            {
+              "role": "user",
+              "content": "=You are Michael Craig's report writing assistant. Michael is a Senior Principal project controls consultant at Exsto Cura Consilium with 25+ years experience in HVDC transmission, energy infrastructure, and offshore projects.\n\nWrite the executive narrative for a monthly schedule intelligence report. Write in Michael's voice — authoritative, direct, no filler, focused on what leadership needs to act on.\n\nCLIENT: {{ $('Load Client Roster').first().json.name }}\nREPORT PERIOD: {{ $('Load Client Roster').first().json.report_period }}\nCONTACT: {{ $('Load Client Roster').first().json.contact }}\n\nSCHEDULE METRICS DATA:\n{{ JSON.stringify($('SmartPM — Pull Schedule Metrics').first().json, null, 2) }}\n\nCRITICAL PATH DATA:\n{{ JSON.stringify($('SmartPM — Pull Critical Path Data').first().json, null, 2) }}\n\nWrite the following sections. Use professional consulting language. Be specific about numbers. Flag risks clearly.\n\n1. EXECUTIVE SUMMARY (3-4 sentences — what leadership needs to know immediately)\n2. SCHEDULE HEALTH (current SQI score, trend vs last month, what is driving it)\n3. CRITICAL PATH STATUS (what is driving the project, any drift, float consumption)\n4. KEY RISKS THIS PERIOD (top 3 risks, each with likelihood and commercial implication)\n5. CONTRACTOR PERFORMANCE (notable items — positive and negative)\n6. RECOMMENDED ACTIONS (3-5 specific, actionable items for the Owner)\n7. LOOKING AHEAD (what to watch next 30 days)\n\nFormat clearly with section headers. This will be reviewed by Michael before delivery to the client."
+            }
+          ]
+        },
+        "options": {
+          "maxTokens": 2000
+        }
+      },
+      "name": "Claude — Generate Report Narrative",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1,
+      "position": [
+        960,
+        380
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "u85U62dgbcEwpdkT",
+          "name": "Anthropic account"
+        }
+      },
+      "id": "8a5f3747-1495-4fb6-a5d9-a1e9f415ea55"
+    },
+    {
+      "parameters": {
+        "databaseId": {
+          "__rl": true,
+          "value": "3ee4d855538e4b69855440172247eaed",
+          "mode": "id"
+        },
+        "title": "={{ $('Load Client Roster').first().json.name }} — Schedule Report {{ $('Load Client Roster').first().json.report_period }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Client|rich_text",
+              "textContent": "={{ $('Load Client Roster').item.json.name }}"
+            },
+            {
+              "key": "Period|rich_text",
+              "textContent": "={{ $('Load Client Roster').item.json.report_period }}"
+            },
+            {
+              "key": "Status|select",
+              "select": "Draft â€” Awaiting Michael Review"
+            },
+            {
+              "key": "Generated|date",
+              "includeTime": true,
+              "date": "={{ new Date().toISOString() }}"
+            }
+          ]
+        },
+        "blockUi": {
+          "blockValues": [
+            {
+              "type": "paragraph",
+              "richText": {
+                "text": "={{ $json.text }}"
+              }
+            }
+          ]
+        },
+        "resource": "databasePage"
+      },
+      "name": "Save Draft to Notion",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        380
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "sHCYhXvTmtCNQPUU",
+          "name": "Notion account"
+        }
+      },
+      "id": "3272f63e-a271-4b71-a123-d1ea10bb652e"
+    },
+    {
+      "parameters": {
+        "sendTo": "mcraig@exstocura.com",
+        "subject": "=📊 Report Draft Ready — {{ $('Load Client Roster').first().json.name }} | {{ $('Load Client Roster').first().json.report_period }}",
+        "emailType": "html",
+        "message": "=<div style='font-family: Georgia, serif; max-width: 600px; padding: 20px; background: #0d0d0d; color: #e8e4dc;'><h2 style='color: #c9a96e; border-bottom: 1px solid #333; padding-bottom: 10px;'>📊 Monthly Report Draft Ready</h2><p><strong>Client:</strong> {{ $('Load Client Roster').first().json.name }}</p><p><strong>Period:</strong> {{ $('Load Client Roster').first().json.report_period }}</p><p><strong>Contact:</strong> {{ $('Load Client Roster').first().json.contact }}</p><hr style='border-color: #333;'/><p>Your monthly schedule intelligence report draft has been generated and saved to Notion. Review, add your forensic judgment layer, and deliver to client.</p><p style='color: #c9a96e;'>→ Open in Notion to review</p><hr style='border-color: #333;'/><h3 style='color: #c9a96e;'>Report Preview</h3><div style='background: #1a1a1a; padding: 15px; border-left: 3px solid #c9a96e; white-space: pre-wrap; font-size: 13px;'>{{ $json.text.substring(0, 800) }}...</div><hr style='border-color: #333;'/><p style='color: #666; font-size: 12px;'>Exsto Cura Report Agent · Auto-generated {{ new Date().toLocaleDateString() }}</p></div>",
+        "options": {}
+      },
+      "name": "Notify Michael — Report Ready",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        380
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "ulhDjv62tjLURSP5",
+          "name": "Gmail account"
+        }
+      },
+      "id": "15906962-2365-4af6-8019-5153bc0ef905"
+    },
+    {
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -200,
+        700
+      ],
+      "parameters": {},
+      "id": "80fca642-2f38-48a2-b9b7-faea93b16d7a"
+    },
+    {
+      "name": "Error Notify",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        80,
+        700
+      ],
+      "parameters": {
+        "sendTo": "mcraig@exstocura.com",
+        "subject": "=n8n error: Monthly Report",
+        "emailType": "html",
+        "message": "=<p><b>Workflow</b>: Monthly Report</p><p><b>Error</b>: {{ $json.execution?.error?.message || 'Unknown' }}</p><p><a href=\"https://exo-project-integrity.app.n8n.cloud\">Open n8n</a></p>",
+        "options": {}
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "ulhDjv62tjLURSP5",
+          "name": "Gmail account"
+        }
+      },
+      "id": "61fdc706-885b-4917-a891-70084e564037"
+    }
+  ],
+  "connections": {
+    "Schedule — 1st of Month 8am": {
+      "main": [
+        [
+          {
+            "node": "Load Client Roster",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Client Roster": {
+      "main": [
+        [
+          {
+            "node": "SmartPM — Pull Schedule Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SmartPM — Pull Schedule Metrics": {
+      "main": [
+        [
+          {
+            "node": "SmartPM — Pull Critical Path Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SmartPM — Pull Critical Path Data": {
+      "main": [
+        [
+          {
+            "node": "Claude — Generate Report Narrative",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude — Generate Report Narrative": {
+      "main": [
+        [
+          {
+            "node": "Save Draft to Notion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Draft to Notion": {
+      "main": [
+        [
+          {
+            "node": "Notify Michael — Report Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Error Notify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": {
+    "node:Schedule — 1st of Month 8am": {
+      "recurrenceRules": []
+    }
+  },
+  "meta": null,
+  "pinData": null,
+  "versionId": "0b395e88-5d9f-4d14-a825-dda411298149",
+  "activeVersionId": "0b395e88-5d9f-4d14-a825-dda411298149",
+  "versionCounter": 5,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-03-29T17:22:57.454Z",
+      "createdAt": "2026-03-29T17:22:57.454Z",
+      "role": "workflow:owner",
+      "workflowId": "WVm9C69CVecMxh6c",
+      "projectId": "Gd7EMXwCMUUP49NR",
+      "project": {
+        "updatedAt": "2026-03-28T14:12:48.769Z",
+        "createdAt": "2026-03-28T14:12:43.065Z",
+        "id": "Gd7EMXwCMUUP49NR",
+        "name": "Michael S Craig <mcraig@exstocura.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "08b1927e-c622-4757-9925-b2a90be3de58"
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": {
+    "updatedAt": "2026-03-29T17:37:32.205Z",
+    "createdAt": "2026-03-29T17:37:32.205Z",
+    "versionId": "0b395e88-5d9f-4d14-a825-dda411298149",
+    "workflowId": "WVm9C69CVecMxh6c",
+    "nodes": [
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "cronExpression",
+                "expression": "0 8 1 * *"
+              }
+            ]
+          }
+        },
+        "name": "Schedule — 1st of Month 8am",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.2,
+        "position": [
+          240,
+          300
+        ],
+        "id": "719fb573-a78d-40d8-bf64-01e9ce1d57f3"
+      },
+      {
+        "parameters": {
+          "jsCode": "// ── CLIENT ROSTER ──────────────────────────────────────────\n// Add each active client here. SmartPM project IDs from your\n// SmartPM account dashboard under Settings > Projects.\n\nconst clients = [\n  {\n    name: 'TDI — Transmission Developers Inc',\n    project_id: 'SMARTPM_PROJECT_ID_TDI',\n    contact: 'Scott',\n    report_type: 'Owner Advisory',\n    contract_value: 'Retainer'\n  },\n  // Add additional clients here as you onboard them:\n  // { name: 'Client 2', project_id: 'SMARTPM_PROJECT_ID_2', ... }\n];\n\nconst month = new Date().toLocaleString('default', { month: 'long' });\nconst year = new Date().getFullYear();\n\nreturn clients.map(c => ({ json: { ...c, report_month: month, report_year: year, report_period: `${month} ${year}` } }));"
+        },
+        "name": "Load Client Roster",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          480,
+          300
+        ],
+        "id": "32678af2-fc8e-46ca-b5ed-900dbefff6c9"
+      },
+      {
+        "parameters": {
+          "url": "=https://app.smartpm.com/api/v1/projects/{{ $json.project_id }}/schedule-metrics",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "options": {
+            "response": {
+              "response": {
+                "responseFormat": "json"
+              }
+            }
+          }
+        },
+        "name": "SmartPM — Pull Schedule Metrics",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4,
+        "position": [
+          720,
+          300
+        ],
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "48RGxhjkOn6nkAnH",
+            "name": "Anthropic API Key"
+          }
+        },
+        "notes": "Replace with actual SmartPM API endpoint — confirm with Billy Upchurch in your next session",
+        "id": "7ce2dc09-bef5-4c4d-a02e-ce32739df47d"
+      },
+      {
+        "parameters": {
+          "url": "=https://app.smartpm.com/api/v1/projects/{{ $('Load Client Roster').item.json.project_id }}/critical-path",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "options": {}
+        },
+        "name": "SmartPM — Pull Critical Path Data",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4,
+        "position": [
+          720,
+          480
+        ],
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "48RGxhjkOn6nkAnH",
+            "name": "Anthropic API Key"
+          }
+        },
+        "id": "48194cc0-97d7-4036-a361-7de60f037d41"
+      },
+      {
+        "parameters": {
+          "model": "claude-haiku-3-20250307",
+          "messages": {
+            "values": [
+              {
+                "role": "user",
+                "content": "=You are Michael Craig's report writing assistant. Michael is a Senior Principal project controls consultant at Exsto Cura Consilium with 25+ years experience in HVDC transmission, energy infrastructure, and offshore projects.\n\nWrite the executive narrative for a monthly schedule intelligence report. Write in Michael's voice — authoritative, direct, no filler, focused on what leadership needs to act on.\n\nCLIENT: {{ $('Load Client Roster').first().json.name }}\nREPORT PERIOD: {{ $('Load Client Roster').first().json.report_period }}\nCONTACT: {{ $('Load Client Roster').first().json.contact }}\n\nSCHEDULE METRICS DATA:\n{{ JSON.stringify($('SmartPM — Pull Schedule Metrics').first().json, null, 2) }}\n\nCRITICAL PATH DATA:\n{{ JSON.stringify($('SmartPM — Pull Critical Path Data').first().json, null, 2) }}\n\nWrite the following sections. Use professional consulting language. Be specific about numbers. Flag risks clearly.\n\n1. EXECUTIVE SUMMARY (3-4 sentences — what leadership needs to know immediately)\n2. SCHEDULE HEALTH (current SQI score, trend vs last month, what is driving it)\n3. CRITICAL PATH STATUS (what is driving the project, any drift, float consumption)\n4. KEY RISKS THIS PERIOD (top 3 risks, each with likelihood and commercial implication)\n5. CONTRACTOR PERFORMANCE (notable items — positive and negative)\n6. RECOMMENDED ACTIONS (3-5 specific, actionable items for the Owner)\n7. LOOKING AHEAD (what to watch next 30 days)\n\nFormat clearly with section headers. This will be reviewed by Michael before delivery to the client."
+              }
+            ]
+          },
+          "options": {
+            "maxTokens": 2000
+          }
+        },
+        "name": "Claude — Generate Report Narrative",
+        "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+        "typeVersion": 1,
+        "position": [
+          960,
+          380
+        ],
+        "credentials": {
+          "anthropicApi": {
+            "id": "u85U62dgbcEwpdkT",
+            "name": "Anthropic account"
+          }
+        },
+        "id": "8a5f3747-1495-4fb6-a5d9-a1e9f415ea55"
+      },
+      {
+        "parameters": {
+          "databaseId": {
+            "__rl": true,
+            "value": "3ee4d855538e4b69855440172247eaed",
+            "mode": "id"
+          },
+          "title": "={{ $('Load Client Roster').first().json.name }} — Schedule Report {{ $('Load Client Roster').first().json.report_period }}",
+          "propertiesUi": {
+            "propertyValues": [
+              {
+                "key": "Client|rich_text",
+                "textContent": "={{ $('Load Client Roster').item.json.name }}"
+              },
+              {
+                "key": "Period|rich_text",
+                "textContent": "={{ $('Load Client Roster').item.json.report_period }}"
+              },
+              {
+                "key": "Status|select",
+                "select": "Draft â€” Awaiting Michael Review"
+              },
+              {
+                "key": "Generated|date",
+                "includeTime": true,
+                "date": "={{ new Date().toISOString() }}"
+              }
+            ]
+          },
+          "blockUi": {
+            "blockValues": [
+              {
+                "type": "paragraph",
+                "richText": {
+                  "text": "={{ $json.text }}"
+                }
+              }
+            ]
+          },
+          "resource": "databasePage"
+        },
+        "name": "Save Draft to Notion",
+        "type": "n8n-nodes-base.notion",
+        "typeVersion": 2,
+        "position": [
+          1200,
+          380
+        ],
+        "credentials": {
+          "notionApi": {
+            "id": "sHCYhXvTmtCNQPUU",
+            "name": "Notion account"
+          }
+        },
+        "id": "3272f63e-a271-4b71-a123-d1ea10bb652e"
+      },
+      {
+        "parameters": {
+          "sendTo": "mcraig@exstocura.com",
+          "subject": "=📊 Report Draft Ready — {{ $('Load Client Roster').first().json.name }} | {{ $('Load Client Roster').first().json.report_period }}",
+          "emailType": "html",
+          "message": "=<div style='font-family: Georgia, serif; max-width: 600px; padding: 20px; background: #0d0d0d; color: #e8e4dc;'><h2 style='color: #c9a96e; border-bottom: 1px solid #333; padding-bottom: 10px;'>📊 Monthly Report Draft Ready</h2><p><strong>Client:</strong> {{ $('Load Client Roster').first().json.name }}</p><p><strong>Period:</strong> {{ $('Load Client Roster').first().json.report_period }}</p><p><strong>Contact:</strong> {{ $('Load Client Roster').first().json.contact }}</p><hr style='border-color: #333;'/><p>Your monthly schedule intelligence report draft has been generated and saved to Notion. Review, add your forensic judgment layer, and deliver to client.</p><p style='color: #c9a96e;'>→ Open in Notion to review</p><hr style='border-color: #333;'/><h3 style='color: #c9a96e;'>Report Preview</h3><div style='background: #1a1a1a; padding: 15px; border-left: 3px solid #c9a96e; white-space: pre-wrap; font-size: 13px;'>{{ $json.text.substring(0, 800) }}...</div><hr style='border-color: #333;'/><p style='color: #666; font-size: 12px;'>Exsto Cura Report Agent · Auto-generated {{ new Date().toLocaleDateString() }}</p></div>",
+          "options": {}
+        },
+        "name": "Notify Michael — Report Ready",
+        "type": "n8n-nodes-base.gmail",
+        "typeVersion": 2,
+        "position": [
+          1440,
+          380
+        ],
+        "credentials": {
+          "gmailOAuth2": {
+            "id": "ulhDjv62tjLURSP5",
+            "name": "Gmail account"
+          }
+        },
+        "id": "15906962-2365-4af6-8019-5153bc0ef905"
+      },
+      {
+        "name": "Error Trigger",
+        "type": "n8n-nodes-base.errorTrigger",
+        "typeVersion": 1,
+        "position": [
+          -200,
+          700
+        ],
+        "parameters": {},
+        "id": "80fca642-2f38-48a2-b9b7-faea93b16d7a"
+      },
+      {
+        "name": "Error Notify",
+        "type": "n8n-nodes-base.gmail",
+        "typeVersion": 2,
+        "position": [
+          80,
+          700
+        ],
+        "parameters": {
+          "sendTo": "mcraig@exstocura.com",
+          "subject": "=n8n error: Monthly Report",
+          "emailType": "html",
+          "message": "=<p><b>Workflow</b>: Monthly Report</p><p><b>Error</b>: {{ $json.execution?.error?.message || 'Unknown' }}</p><p><a href=\"https://exo-project-integrity.app.n8n.cloud\">Open n8n</a></p>",
+          "options": {}
+        },
+        "credentials": {
+          "gmailOAuth2": {
+            "id": "ulhDjv62tjLURSP5",
+            "name": "Gmail account"
+          }
+        },
+        "id": "61fdc706-885b-4917-a891-70084e564037"
+      }
+    ],
+    "connections": {
+      "Schedule — 1st of Month 8am": {
+        "main": [
+          [
+            {
+              "node": "Load Client Roster",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Load Client Roster": {
+        "main": [
+          [
+            {
+              "node": "SmartPM — Pull Schedule Metrics",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "SmartPM — Pull Schedule Metrics": {
+        "main": [
+          [
+            {
+              "node": "SmartPM — Pull Critical Path Data",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "SmartPM — Pull Critical Path Data": {
+        "main": [
+          [
+            {
+              "node": "Claude — Generate Report Narrative",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Claude — Generate Report Narrative": {
+        "main": [
+          [
+            {
+              "node": "Save Draft to Notion",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Save Draft to Notion": {
+        "main": [
+          [
+            {
+              "node": "Notify Michael — Report Ready",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Error Trigger": {
+        "main": [
+          [
+            {
+              "node": "Error Notify",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "authors": "Michael S Craig",
+    "name": null,
+    "description": null,
+    "autosaved": false,
+    "workflowPublishHistory": [
+      {
+        "createdAt": "2026-03-29T22:25:17.264Z",
+        "id": 21,
+        "workflowId": "WVm9C69CVecMxh6c",
+        "versionId": "0b395e88-5d9f-4d14-a825-dda411298149",
+        "event": "activated",
+        "userId": "08b1927e-c622-4757-9925-b2a90be3de58"
+      }
+    ]
+  }
+}

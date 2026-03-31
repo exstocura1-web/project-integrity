@@ -1,0 +1,1986 @@
+{
+  "name": "LinkedIn Posting & Replying (Exsto Cura — Buffer)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "a1000001-0001-4000-8000-000000000001",
+      "name": "Schedule Weekdays 8AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/databases/REPLACE_LINKEDIN_TOPIC_QUEUE_DATABASE_ID/query",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"page_size\":1,\"filter\":{\"property\":\"Status\",\"select\":{\"equals\":\"Ready\"}},\"sorts\":[{\"timestamp\":\"created_time\",\"direction\":\"ascending\"}]}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "a1000001-0001-4000-8000-00000000002f",
+      "name": "Notion: Query Topic Queue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        300
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "REPLACE_NOTION",
+          "name": "notionApi"
+        }
+      },
+      "notesInFlow": true,
+      "notes": "Set REPLACE_LINKEDIN_TOPIC_QUEUE_DATABASE_ID in topicQueueQueryUrl (top of build script). Database: LinkedIn Topic Queue; Status select must include Ready; Topic column (name Topic)."
+    },
+    {
+      "parameters": {
+        "jsCode": "const res = $input.first().json;\nconst row = res.body !== undefined ? res.body : res;\nconst results = Array.isArray(row.results) ? row.results : [];\nfunction rt(prop) {\n  if (!prop) return '';\n  if (prop.type === 'title') return (prop.title || []).map((t) => t.plain_text).join('');\n  if (prop.type === 'rich_text') return (prop.rich_text || []).map((t) => t.plain_text).join('');\n  return '';\n}\nif (!results.length) {\n  return [{ json: { _queueEmpty: true, _trigger: 'schedule' } }];\n}\nconst page = results[0];\nconst props = page.properties || {};\nconst topicField = props.Topic || props.topic;\nconst topic = rt(topicField).trim() || 'Forensic scheduling, HVDC, and owner-side project controls';\nreturn [{\n  json: {\n    mode: 'post',\n    topic,\n    post_id: '',\n    comment_text: '',\n    comment_author: 'LinkedIn member',\n    scheduled_at: '',\n    _trigger: 'schedule',\n    _notionQueuePageId: page.id,\n    _queueEmpty: false,\n  },\n}];"
+      },
+      "id": "a1000001-0001-4000-8000-000000000030",
+      "name": "Code: Map Topic Queue Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "qe1",
+              "leftValue": "={{ $json._queueEmpty }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-000000000031",
+      "name": "IF Queue Has Row",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": {
+          "__rl": true,
+          "value": "REPLACE_BD_INTELLIGENCE_DATABASE_ID",
+          "mode": "id"
+        },
+        "title": "=LinkedIn Topic Queue — empty (schedule)",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "logged_at|date",
+              "includeTime": true,
+              "date": "={{ new Date().toISOString() }}"
+            },
+            {
+              "key": "action|select",
+              "select": "queue_empty"
+            },
+            {
+              "key": "content_preview|rich_text",
+              "textContent": "No rows with Status=Ready in LinkedIn Topic Queue."
+            },
+            {
+              "key": "topic|rich_text",
+              "textContent": "LinkedIn Topic Queue"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-000000000032",
+      "name": "Notion: BD Intelligence (queue empty)",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        420
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "REPLACE_NOTION",
+          "name": "notionApi"
+        }
+      },
+      "notesInFlow": true,
+      "notes": "Add select option queue_empty to BD Intelligence action column (or remap key)."
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "linkedin-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-000000000002",
+      "name": "Webhook In",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        520
+      ],
+      "webhookId": "linkedin-exsto-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nconst body = (j.body !== undefined && j.body !== null && typeof j.body === 'object' && !Array.isArray(j.body)) ? j.body : j;\nconst trigger = j.body !== undefined ? 'webhook' : 'schedule';\nconst mode = String(body.mode || 'post').toLowerCase();\nconst topic = String(body.topic || 'Forensic scheduling, HVDC, and owner-side project controls').trim();\nconst post_id = String(body.post_id || '').trim();\nconst comment_text = String(body.comment_text || '').trim();\nconst comment_author = String(body.comment_author || 'LinkedIn member').trim();\nconst scheduled_at = String(body.scheduled_at || '').trim();\nreturn [{ json: { mode, topic, post_id, comment_text, comment_author, scheduled_at, _trigger: trigger } }];"
+      },
+      "id": "a1000001-0001-4000-8000-000000000003",
+      "name": "Normalize Webhook + Schedule",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nif (j.mode === 'reply') {\n  if (!j.post_id || !j.comment_text) {\n    return [{ json: { ...j, _valid: false, _error: 'reply mode requires post_id and comment_text' } }];\n  }\n}\nreturn [{ json: { ...j, _valid: true } }];"
+      },
+      "id": "a1000001-0001-4000-8000-000000000004",
+      "name": "Validate Mode Inputs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "v1",
+              "leftValue": "={{ $json._valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-000000000005",
+      "name": "IF Input Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        920,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "m1",
+              "leftValue": "={{ $json.mode }}",
+              "rightValue": "post",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-000000000006",
+      "name": "Route: post vs reply",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const v = $('Validate Mode Inputs').first().json;\nconst system = \"You are Michael Craig, founder of Exsto Cura Consilium (exstocura.com), Houston, TX. You are a practitioner, not a marketer. 25+ years in project controls: HVDC transmission, offshore wind, energy infrastructure. You specialize in forensic scheduling, AACE-aligned Time Impact Analysis (TRIAGE-IMPACT™), Primavera P6, and change order development. Your anchor proof of concept is CO-015, a $27M settlement on the Champlain Hudson Power Express (CHPE) where AI-enabled schedule forensics found causation chains manual analysis had missed. You are a SmartPM consulting partner. LinkedIn voice: direct, specific, occasionally provocative. No buzzwords. No em dashes. No bullet points in posts. You write like a peer talking to peers. Return only the final post text.\";\nconst user = `Write a high-performing LinkedIn post about this topic or angle:\\n\\n${v.topic}\\n\\nRules:\\n- 150-250 words\\n- First line must be bold on LinkedIn: wrap it in **double asterisks**. Never open with I'm excited to share or similar filler\\n- Include one concrete data point or example from energy infrastructure or project controls\\n- End with a single CTA or one sharp question to drive comments\\n- Use 2-4 line breaks for scannability\\n- End with 3-5 relevant hashtags on the last line\\n- No em dashes. No bullet points\\n\\nReturn post text only, ready to publish.`;\nreturn [{ json: { ...v, anthropic_system: system, anthropic_user: user, action: 'create_post' } }];"
+      },
+      "id": "a1000001-0001-4000-8000-000000000007",
+      "name": "Build Anthropic: Post",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  model: 'claude-opus-4-5-20251101',\n  max_tokens: $json.action === 'reply_comment' ? 512 : 1024,\n  temperature: $json.action === 'reply_comment' ? 0.75 : 0.85,\n  system: $json.anthropic_system,\n  messages: [{ role: 'user', content: $json.anthropic_user }]\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "a1000001-0001-4000-8000-000000000008",
+      "name": "Claude: Generate Post",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1580,
+        200
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "REPLACE_ANTHROPIC",
+          "name": "anthropicApi"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const v = $('Validate Mode Inputs').first().json;\nconst action = v.mode === 'reply' ? 'reply_comment' : 'create_post';\nconst http = $input.first().json;\nconst statusCode = Number(http.statusCode ?? http.status_code ?? 0);\nconst row = http.body !== undefined ? http.body : http;\nconst block = (row.content || []).find((c) => c.type === 'text');\nconst text = (block && block.text) ? String(block.text).trim() : '';\nlet claude_ok = true;\nlet claude_error_detail = '';\nif (statusCode < 200 || statusCode >= 300) {\n  claude_ok = false;\n  claude_error_detail = 'HTTP ' + statusCode + ' ' + (typeof row === 'string' ? row : JSON.stringify(row)).slice(0, 400);\n} else if (row.type === 'error') {\n  claude_ok = false;\n  claude_error_detail = JSON.stringify(row.error || row).slice(0, 400);\n} else if (!text) {\n  claude_ok = false;\n  claude_error_detail = 'empty_completion';\n}\nreturn [{ json: { ...v, action, generated_content: text, claude_ok, claude_error_detail, claude_statusCode: statusCode } }];"
+      },
+      "id": "a1000001-0001-4000-8000-000000000009",
+      "name": "Extract Post Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.claude_ok }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-000000000091",
+      "name": "IF Claude OK (post)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const v = $('Validate Mode Inputs').first().json;\nconst system = \"You are Michael Craig, founder of Exsto Cura Consilium. You reply on LinkedIn as a senior project controls practitioner (HVDC, offshore wind, forensic scheduling, AACE-aligned TIA, P6, change orders). CO-015 / CHPE and SmartPM partnership are fair context when relevant. Sound human, not AI-generated. Never use phrases like \\\"Great point!\\\" or \\\"Thanks for sharing.\\\" No sycophancy. Return only the reply text.\";\nconst user = `Reply to this LinkedIn comment on one of your posts.\\n\\nComment author: ${v.comment_author}\\nTheir comment: ${v.comment_text}\\nThread context (what your original post was about): ${v.topic}\\n\\nRules:\\n- 1-3 sentences maximum\\n- Add a specific insight, pushback, or follow-up question\\n- No hashtags unless truly necessary (usually skip)\\n\\nReturn reply text only.`;\nreturn [{ json: { ...v, anthropic_system: system, anthropic_user: user, action: 'reply_comment' } }];"
+      },
+      "id": "a1000001-0001-4000-8000-00000000000a",
+      "name": "Build Anthropic: Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  model: 'claude-opus-4-5-20251101',\n  max_tokens: $json.action === 'reply_comment' ? 512 : 1024,\n  temperature: $json.action === 'reply_comment' ? 0.75 : 0.85,\n  system: $json.anthropic_system,\n  messages: [{ role: 'user', content: $json.anthropic_user }]\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "a1000001-0001-4000-8000-00000000000b",
+      "name": "Claude: Generate Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1580,
+        440
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "REPLACE_ANTHROPIC",
+          "name": "anthropicApi"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const v = $('Validate Mode Inputs').first().json;\nconst action = v.mode === 'reply' ? 'reply_comment' : 'create_post';\nconst http = $input.first().json;\nconst statusCode = Number(http.statusCode ?? http.status_code ?? 0);\nconst row = http.body !== undefined ? http.body : http;\nconst block = (row.content || []).find((c) => c.type === 'text');\nconst text = (block && block.text) ? String(block.text).trim() : '';\nlet claude_ok = true;\nlet claude_error_detail = '';\nif (statusCode < 200 || statusCode >= 300) {\n  claude_ok = false;\n  claude_error_detail = 'HTTP ' + statusCode + ' ' + (typeof row === 'string' ? row : JSON.stringify(row)).slice(0, 400);\n} else if (row.type === 'error') {\n  claude_ok = false;\n  claude_error_detail = JSON.stringify(row.error || row).slice(0, 400);\n} else if (!text) {\n  claude_ok = false;\n  claude_error_detail = 'empty_completion';\n}\nreturn [{ json: { ...v, action, generated_content: text, claude_ok, claude_error_detail, claude_statusCode: statusCode } }];"
+      },
+      "id": "a1000001-0001-4000-8000-00000000000c",
+      "name": "Extract Reply Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c2",
+              "leftValue": "={{ $json.claude_ok }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-000000000092",
+      "name": "IF Claude OK (reply)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "q1",
+              "leftValue": "={{ $json.generated_content.length }}",
+              "rightValue": 50,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-00000000000d",
+      "name": "Quality Gate (>= 50 chars)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2100,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "s1",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "create_post",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "post"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "s2",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "reply_comment",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "reply"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "id": "a1000001-0001-4000-8000-00000000000e",
+      "name": "Switch: publish path",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        2320,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const v = $('Validate Mode Inputs').first().json;\nconst qg = $('Quality Gate (>= 50 chars)').first().json;\nconst iso = String(v.scheduled_at || '').trim();\nlet shareMode = 'shareNow';\nlet dueAt = '';\nif (iso.length > 8) {\n  shareMode = 'customScheduled';\n  dueAt = iso.includes('T') ? iso : new Date(iso).toISOString();\n}\nreturn [{ json: {\n  ...qg,\n  _buffer_share_mode: shareMode,\n  _buffer_due_at: dueAt || new Date().toISOString(),\n  _notion_queue_page_id: String(v._notionQueuePageId || ''),\n  _trigger: v._trigger,\n}}];"
+      },
+      "id": "a1000001-0001-4000-8000-000000000093",
+      "name": "Code: Prepare Buffer Post",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2540,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "post",
+        "operation": "create",
+        "organizationId": "REPLACE_BUFFER_ORGANIZATION_ID",
+        "channelId": "REPLACE_BUFFER_LINKEDIN_CHANNEL_ID",
+        "postText": "={{ $('Quality Gate (>= 50 chars)').first().json.generated_content }}",
+        "shareMode": "={{ $json._buffer_share_mode }}",
+        "dueAt": "={{ $json._buffer_due_at }}",
+        "attachmentType": "none"
+      },
+      "id": "a1000001-0001-4000-8000-000000000010",
+      "name": "Buffer: Create Post (LinkedIn)",
+      "type": "@bufferapp/n8n-nodes-buffer.buffer",
+      "typeVersion": 1,
+      "position": [
+        2760,
+        200
+      ],
+      "credentials": {
+        "bufferApi": {
+          "id": "REPLACE_BUFFER",
+          "name": "bufferApi"
+        }
+      },
+      "continueOnFail": true,
+      "notesInFlow": true,
+      "notes": "Install @bufferapp/n8n-nodes-buffer (Community nodes). Replace REPLACE_BUFFER_ORGANIZATION_ID and REPLACE_BUFFER_LINKEDIN_CHANNEL_ID with IDs from Buffer (or re-pick in UI). LinkedIn personal channel required."
+    },
+    {
+      "parameters": {
+        "jsCode": "const qg = $('Quality Gate (>= 50 chars)').first().json;\nconst v = $('Validate Mode Inputs').first().json;\nconst item = $input.first();\nconst inp = item.json || {};\nlet statusCode = 200;\nlet detail = '';\nif (item.error) {\n  const e = item.error;\n  statusCode = Number(e.httpCode || e.statusCode || e.status || 400);\n  if (!statusCode || statusCode < 400) statusCode = 400;\n  detail = JSON.stringify(e).slice(0, 1500);\n} else {\n  const j = inp;\n  detail = typeof j === 'string' ? j : JSON.stringify(j).slice(0, 1500);\n}\nreturn [{ json: {\n  _trigger: v._trigger,\n  action: qg.action,\n  topic: qg.topic,\n  post_id: qg.post_id,\n  generated_content: qg.generated_content,\n  statusCode,\n  buffer_body: detail,\n  _notion_queue_page_id: String(v._notionQueuePageId || ''),\n}}];"
+      },
+      "id": "a1000001-0001-4000-8000-000000000012",
+      "name": "Merge Buffer Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2980,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nconst sc = Number(j.statusCode);\nlet bucket = 'success';\nif (sc >= 400 && sc < 500) bucket = 'buffer_fail';\nelse if (sc >= 500) bucket = 'buffer_fail';\nelse if (sc < 200 || sc >= 300) bucket = 'buffer_fail';\nreturn [{ json: { ...j, _bucket: bucket } }];"
+      },
+      "id": "a1000001-0001-4000-8000-000000000013",
+      "name": "Classify Buffer Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3200,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "b1",
+                    "leftValue": "={{ $json._bucket }}",
+                    "rightValue": "success",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "success"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "id": "a1000001-0001-4000-8000-000000000014",
+      "name": "Switch: Buffer outcome",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        3420,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "pq1",
+              "leftValue": "={{ $json._trigger }}",
+              "rightValue": "schedule",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "pq2",
+              "leftValue": "={{ ($json._notion_queue_page_id || '').length }}",
+              "rightValue": 20,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-000000000094",
+      "name": "IF Patch Topic Queue (schedule)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3640,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://api.notion.com/v1/pages/' + $('Merge Buffer Response').first().json._notion_queue_page_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  properties: {\n    Status: { select: { name: 'Published' } },\n    PublishedAt: { date: { start: new Date().toISOString() } },\n  },\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "a1000001-0001-4000-8000-000000000095",
+      "name": "HTTP: PATCH Topic Queue Published",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3860,
+        60
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "REPLACE_NOTION",
+          "name": "notionApi"
+        }
+      },
+      "notesInFlow": true,
+      "notes": "Notion page IDs may include hyphens; URL uses UUID without hyphens. If PATCH fails, verify property names Status and PublishedAt on LinkedIn Topic Queue database."
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": {
+          "__rl": true,
+          "value": "REPLACE_CONNECTION_QUEUE_DATABASE_ID",
+          "mode": "id"
+        },
+        "title": "={{ 'Reply — ' + $('Validate Mode Inputs').first().json.comment_author }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "reply_text|rich_text",
+              "textContent": "={{ $('Quality Gate (>= 50 chars)').first().json.generated_content }}"
+            },
+            {
+              "key": "post_id|rich_text",
+              "textContent": "={{ $('Validate Mode Inputs').first().json.post_id }}"
+            },
+            {
+              "key": "comment_author|rich_text",
+              "textContent": "={{ $('Validate Mode Inputs').first().json.comment_author }}"
+            },
+            {
+              "key": "comment_text|rich_text",
+              "textContent": "={{ $('Validate Mode Inputs').first().json.comment_text }}"
+            },
+            {
+              "key": "topic|rich_text",
+              "textContent": "={{ $('Validate Mode Inputs').first().json.topic }}"
+            },
+            {
+              "key": "Status|select",
+              "select": "Needs Reply"
+            },
+            {
+              "key": "CreatedAt|date",
+              "includeTime": true,
+              "date": "={{ new Date().toISOString() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-000000000011",
+      "name": "Notion: Connection Queue (reply draft)",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [
+        2540,
+        380
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "REPLACE_NOTION",
+          "name": "notionApi"
+        }
+      },
+      "notesInFlow": true,
+      "notes": "Add columns to LinkedIn Connection Queue: reply_text, post_id, comment_author, comment_text, topic, Status (include Needs Reply), CreatedAt. Map keys if your Notion names differ."
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "fromEmail": "mcraig@exstocura.com",
+        "toEmail": "mcraig@exstocura.com",
+        "subject": "=LinkedIn reply ready — {{ $('Validate Mode Inputs').first().json.comment_author }}",
+        "message": "={{ 'Your draft reply:\\n\\n' + ($('Quality Gate (>= 50 chars)').first().json.generated_content || '') + '\\n\\n--- Original comment ---\\n' + $('Validate Mode Inputs').first().json.comment_text + '\\n\\npost_id: ' + $('Validate Mode Inputs').first().json.post_id + '\\n\\nPost this manually on LinkedIn. No comment API is used (Buffer does not support LinkedIn comments).' }}",
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-000000000096",
+      "name": "Email: Reply ready (manual)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2760,
+        380
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_SMTP",
+          "name": "smtp"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "wr1",
+              "leftValue": "={{ $('Validate Mode Inputs').item.json._trigger }}",
+              "rightValue": "webhook",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-000000000097",
+      "name": "IF Webhook (reply)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2980,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'reply_ready', reply_text: $('Quality Gate (>= 50 chars)').first().json.generated_content, post_id: $('Validate Mode Inputs').first().json.post_id }) }}",
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-000000000098",
+      "name": "Respond: Reply ready",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        3200,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "fromEmail": "mcraig@exstocura.com",
+        "toEmail": "mcraig@exstocura.com",
+        "subject": "=LinkedIn automation: published OK via Buffer ({{ $('Merge Buffer Response').item.json.action }})",
+        "message": "={{ 'Buffer/status: ' + $('Merge Buffer Response').item.json.statusCode + '\\n\\nPreview:\\n' + ($('Merge Buffer Response').item.json.generated_content || '').substring(0, 400) + '\\n\\nBuffer response:\\n' + $('Merge Buffer Response').item.json.buffer_body }}",
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-000000000015",
+      "name": "Email: Success",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        4080,
+        120
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_SMTP",
+          "name": "smtp"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": {
+          "__rl": true,
+          "value": "REPLACE_BD_INTELLIGENCE_DATABASE_ID",
+          "mode": "id"
+        },
+        "title": "={{ 'LinkedIn ' + $('Merge Buffer Response').item.json.action + ' — ' + ($('Merge Buffer Response').item.json.topic || '').substring(0, 80) }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "logged_at|date",
+              "includeTime": true,
+              "date": "={{ new Date().toISOString() }}"
+            },
+            {
+              "key": "action|select",
+              "select": "={{ $('Merge Buffer Response').item.json.action }}"
+            },
+            {
+              "key": "content_preview|rich_text",
+              "textContent": "={{ ($('Merge Buffer Response').item.json.generated_content || '').substring(0, 200) }}"
+            },
+            {
+              "key": "topic|rich_text",
+              "textContent": "={{ $('Merge Buffer Response').item.json.topic || '' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-000000000016",
+      "name": "Notion: BD Intelligence (success)",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [
+        4300,
+        120
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "REPLACE_NOTION",
+          "name": "notionApi"
+        }
+      },
+      "notesInFlow": true,
+      "notes": "REPLACE_BD_INTELLIGENCE_DATABASE_ID — errors and successes use this DB. Keys: logged_at, action, content_preview, topic (success) | error_at, error_type, error_body, content_preview (errors)."
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $('Quality Gate (>= 50 chars)').first().json;\nreturn [{ json: {\n  error_at: new Date().toISOString(),\n  error_type: 'quality_fail',\n  error_body: '',\n  content_preview: (j.generated_content || '').substring(0, 500),\n}}];"
+      },
+      "id": "a1000001-0001-4000-8000-00000000002c",
+      "name": "Code: Notion error row (quality)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2320,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nreturn [{ json: {\n  error_at: new Date().toISOString(),\n  error_type: 'claude_fail',\n  error_body: String(j.claude_error_detail || '').substring(0, 500),\n  content_preview: (j.generated_content || '').substring(0, 500),\n}}];"
+      },
+      "id": "a1000001-0001-4000-8000-00000000009a",
+      "name": "Code: Notion error row (Claude)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2100,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nreturn [{ json: {\n  error_at: new Date().toISOString(),\n  error_type: 'buffer_fail',\n  error_body: String(j.buffer_body || '').substring(0, 500),\n  content_preview: (j.generated_content || '').substring(0, 500),\n}}];"
+      },
+      "id": "a1000001-0001-4000-8000-00000000002d",
+      "name": "Code: Notion error row (Buffer)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3640,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": {
+          "__rl": true,
+          "value": "REPLACE_BD_INTELLIGENCE_DATABASE_ID",
+          "mode": "id"
+        },
+        "title": "={{ 'LinkedIn error — ' + $json.error_type }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "error_at|date",
+              "includeTime": true,
+              "date": "={{ $json.error_at }}"
+            },
+            {
+              "key": "error_type|select",
+              "select": "={{ $json.error_type }}"
+            },
+            {
+              "key": "error_body|rich_text",
+              "textContent": "={{ $json.error_body }}"
+            },
+            {
+              "key": "content_preview|rich_text",
+              "textContent": "={{ $json.content_preview }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-00000000002e",
+      "name": "Notion: BD Intelligence (error)",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [
+        3860,
+        520
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "REPLACE_NOTION",
+          "name": "notionApi"
+        }
+      },
+      "notesInFlow": true,
+      "notes": "Single error stream (BD Intelligence). Select options: quality_fail, buffer_fail, claude_fail."
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "fromEmail": "mcraig@exstocura.com",
+        "toEmail": "mcraig@exstocura.com",
+        "subject": "=LinkedIn automation: Buffer publish failed",
+        "message": "={{ 'statusCode=' + $json.statusCode + '\\n\\n' + $json.buffer_body + '\\n\\naction=' + $json.action }}",
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-000000000017",
+      "name": "Email: Buffer failed",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        3640,
+        440
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_SMTP",
+          "name": "smtp"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "fromEmail": "mcraig@exstocura.com",
+        "toEmail": "mcraig@exstocura.com",
+        "subject": "=LinkedIn automation: Claude API failed",
+        "message": "={{ $json.claude_error_detail || 'claude_fail' }}",
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-00000000009b",
+      "name": "Email: Claude failed",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2100,
+        520
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_SMTP",
+          "name": "smtp"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "fromEmail": "mcraig@exstocura.com",
+        "toEmail": "mcraig@exstocura.com",
+        "subject": "=LinkedIn automation: invalid webhook payload",
+        "message": "={{ $json._error || 'Invalid input' }}",
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-00000000001f",
+      "name": "Email: Invalid input",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1140,
+        560
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_SMTP",
+          "name": "smtp"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "fromEmail": "mcraig@exstocura.com",
+        "toEmail": "mcraig@exstocura.com",
+        "subject": "=LinkedIn automation: quality gate blocked publish",
+        "message": "={{ 'Generated text under 50 characters or empty. Not published.\\n\\nRaw:\\n' + ($json.generated_content || '') }}",
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-000000000020",
+      "name": "Email: Quality gate fail",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2320,
+        560
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_SMTP",
+          "name": "smtp"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "w1",
+              "leftValue": "={{ $('Validate Mode Inputs').item.json._trigger }}",
+              "rightValue": "webhook",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-000000000021",
+      "name": "IF Webhook Run",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4520,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, action: $('Merge Buffer Response').item.json.action, statusCode: $('Merge Buffer Response').item.json.statusCode }) }}",
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-000000000022",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        4740,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "w2",
+              "leftValue": "={{ $('Validate Mode Inputs').item.json._trigger }}",
+              "rightValue": "webhook",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-000000000023",
+      "name": "IF Webhook Run (validation)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseCode": 400,
+        "responseBody": "={{ JSON.stringify({ ok: false, error: $('Validate Mode Inputs').first().json._error || 'validation_failed' }) }}",
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-000000000024",
+      "name": "Respond Validation Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1580,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "w3",
+              "leftValue": "={{ $('Validate Mode Inputs').item.json._trigger }}",
+              "rightValue": "webhook",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-000000000025",
+      "name": "IF Webhook Run (quality)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2320,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseCode": 422,
+        "responseBody": "={{ JSON.stringify({ ok: false, error: 'quality_gate', preview: ($json.generated_content || '') }) }}",
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-000000000026",
+      "name": "Respond Quality Reject",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2540,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "w4",
+              "leftValue": "={{ $('Validate Mode Inputs').item.json._trigger }}",
+              "rightValue": "webhook",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-000000000027",
+      "name": "IF Webhook (Buffer error)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3860,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseCode": 502,
+        "responseBody": "={{ JSON.stringify({ ok: false, stage: 'buffer', statusCode: $('Merge Buffer Response').item.json.statusCode, detail: $('Merge Buffer Response').item.json.buffer_body }) }}",
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-000000000028",
+      "name": "Respond Buffer Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        4080,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "w7",
+              "leftValue": "={{ $('Validate Mode Inputs').item.json._trigger }}",
+              "rightValue": "webhook",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-000000000099",
+      "name": "IF Webhook (Claude error)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2320,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseCode": 502,
+        "responseBody": "={{ JSON.stringify({ ok: false, stage: 'claude', detail: $json.claude_error_detail || '' }) }}",
+        "options": {}
+      },
+      "id": "a1000001-0001-4000-8000-00000000009c",
+      "name": "Respond Claude Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2540,
+        480
+      ]
+    }
+  ],
+  "connections": {
+    "Schedule Weekdays 8AM": {
+      "main": [
+        [
+          {
+            "node": "Notion: Query Topic Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Query Topic Queue": {
+      "main": [
+        [
+          {
+            "node": "Code: Map Topic Queue Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Map Topic Queue Row": {
+      "main": [
+        [
+          {
+            "node": "IF Queue Has Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Queue Has Row": {
+      "main": [
+        [
+          {
+            "node": "Validate Mode Inputs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notion: BD Intelligence (queue empty)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: BD Intelligence (queue empty)": {
+      "main": [
+        []
+      ]
+    },
+    "Webhook In": {
+      "main": [
+        [
+          {
+            "node": "Normalize Webhook + Schedule",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Webhook + Schedule": {
+      "main": [
+        [
+          {
+            "node": "Validate Mode Inputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Mode Inputs": {
+      "main": [
+        [
+          {
+            "node": "IF Input Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Input Valid": {
+      "main": [
+        [
+          {
+            "node": "Route: post vs reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email: Invalid input",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF Webhook Run (validation)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route: post vs reply": {
+      "main": [
+        [
+          {
+            "node": "Build Anthropic: Post",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Anthropic: Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Anthropic: Post": {
+      "main": [
+        [
+          {
+            "node": "Claude: Generate Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude: Generate Post": {
+      "main": [
+        [
+          {
+            "node": "Extract Post Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Post Text": {
+      "main": [
+        [
+          {
+            "node": "IF Claude OK (post)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Claude OK (post)": {
+      "main": [
+        [
+          {
+            "node": "Quality Gate (>= 50 chars)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email: Claude failed",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code: Notion error row (Claude)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF Webhook (Claude error)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Anthropic: Reply": {
+      "main": [
+        [
+          {
+            "node": "Claude: Generate Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude: Generate Reply": {
+      "main": [
+        [
+          {
+            "node": "Extract Reply Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Reply Text": {
+      "main": [
+        [
+          {
+            "node": "IF Claude OK (reply)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Claude OK (reply)": {
+      "main": [
+        [
+          {
+            "node": "Quality Gate (>= 50 chars)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email: Claude failed",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code: Notion error row (Claude)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF Webhook (Claude error)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Notion error row (Claude)": {
+      "main": [
+        [
+          {
+            "node": "Notion: BD Intelligence (error)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Webhook (Claude error)": {
+      "main": [
+        [
+          {
+            "node": "Respond Claude Error",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Quality Gate (>= 50 chars)": {
+      "main": [
+        [
+          {
+            "node": "Switch: publish path",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email: Quality gate fail",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF Webhook Run (quality)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code: Notion error row (quality)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Notion error row (quality)": {
+      "main": [
+        [
+          {
+            "node": "Notion: BD Intelligence (error)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch: publish path": {
+      "main": [
+        [
+          {
+            "node": "Code: Prepare Buffer Post",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notion: Connection Queue (reply draft)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Code: Prepare Buffer Post": {
+      "main": [
+        [
+          {
+            "node": "Buffer: Create Post (LinkedIn)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buffer: Create Post (LinkedIn)": {
+      "main": [
+        [
+          {
+            "node": "Merge Buffer Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Buffer Response": {
+      "main": [
+        [
+          {
+            "node": "Classify Buffer Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Buffer Status": {
+      "main": [
+        [
+          {
+            "node": "Switch: Buffer outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch: Buffer outcome": {
+      "main": [
+        [
+          {
+            "node": "IF Patch Topic Queue (schedule)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email: Buffer failed",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF Webhook (Buffer error)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code: Notion error row (Buffer)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Patch Topic Queue (schedule)": {
+      "main": [
+        [
+          {
+            "node": "HTTP: PATCH Topic Queue Published",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email: Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: PATCH Topic Queue Published": {
+      "main": [
+        [
+          {
+            "node": "Email: Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Notion error row (Buffer)": {
+      "main": [
+        [
+          {
+            "node": "Notion: BD Intelligence (error)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email: Success": {
+      "main": [
+        [
+          {
+            "node": "Notion: BD Intelligence (success)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: BD Intelligence (success)": {
+      "main": [
+        [
+          {
+            "node": "IF Webhook Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Webhook Run": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Notion: Connection Queue (reply draft)": {
+      "main": [
+        [
+          {
+            "node": "Email: Reply ready (manual)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email: Reply ready (manual)": {
+      "main": [
+        [
+          {
+            "node": "IF Webhook (reply)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Webhook (reply)": {
+      "main": [
+        [
+          {
+            "node": "Respond: Reply ready",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Email: Buffer failed": {
+      "main": [
+        []
+      ]
+    },
+    "IF Webhook (Buffer error)": {
+      "main": [
+        [
+          {
+            "node": "Respond Buffer Error",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "IF Webhook Run (validation)": {
+      "main": [
+        [
+          {
+            "node": "Respond Validation Error",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "IF Webhook Run (quality)": {
+      "main": [
+        [
+          {
+            "node": "Respond Quality Reject",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "timezone": "America/Chicago",
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [
+    "linkedin",
+    "exsto-cura",
+    "automation",
+    "buffer"
+  ]
+}

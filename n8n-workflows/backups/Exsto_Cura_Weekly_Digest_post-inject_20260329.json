@@ -1,0 +1,785 @@
+{
+  "updatedAt": "2026-03-29T22:47:01.156Z",
+  "createdAt": "2026-03-29T16:29:03.565Z",
+  "id": "TtSLiFqydMLODkHI",
+  "name": "Exsto Cura Weekly Digest",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "name": "Monday 8am Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -800,
+        400
+      ],
+      "id": "4082869e-b6bb-413a-a73f-00d95bdda24c"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "bd23e3d8b636495d9b889587dae985e4",
+          "mode": "id"
+        },
+        "returnAll": true,
+        "filterType": "formula",
+        "filters": {
+          "conditions": [
+            {
+              "key": "Timestamp|date",
+              "condition": "pastWeek"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Get Week Emails",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [
+        -580,
+        400
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "sHCYhXvTmtCNQPUU",
+          "name": "Notion account"
+        }
+      },
+      "id": "84548677-3b64-4c37-bc7d-d1c759bb0749"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst stats = {total: items.length, urgent: 0, bd: 0, routine: 0, vendor: 0, junk: 0, senders: {}};\nfor (const item of items) {\n  const props = item.json.properties || item.json;\n  const cls = props.Classification?.select?.name || props.classification || 'UNKNOWN';\n  const from = props.From?.rich_text?.[0]?.plain_text || props.original_from || 'Unknown';\n  stats[cls.toLowerCase()] = (stats[cls.toLowerCase()] || 0) + 1;\n  stats.senders[from] = (stats.senders[from] || 0) + 1;\n}\nconst topSenders = Object.entries(stats.senders).sort((a,b) => b[1]-a[1]).slice(0,5).map(([s,c]) => `${s}: ${c} emails`).join('\\n');\nconst summary = `Week Summary:\\nTotal emails: ${stats.total}\\nURGENT: ${stats.urgent}\\nBD: ${stats.bd}\\nROUTINE: ${stats.routine}\\nVENDOR: ${stats.vendor}\\nJUNK: ${stats.junk}\\n\\nTop Senders:\\n${topSenders}`;\nreturn [{json: {summary, ...stats, topSenders}}];"
+      },
+      "name": "Aggregate Stats",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -360,
+        400
+      ],
+      "id": "c6b30f20-73f6-4a99-89fc-43fcd1557877"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $credentials.httpHeaderAuth.value }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({model:'claude-haiku-3-20250307',max_tokens:1000,messages:[{role:'user',content:'You are an executive assistant for Michael Craig, CEO of Exsto Cura. Write a concise weekly email digest based on this email triage data. Be professional, highlight anything important, and note trends. DATA: '+$json.summary+' Format as a clean HTML email with sections for Key Highlights, Stats Breakdown, and Recommendations.'}]}) }}",
+        "options": {}
+      },
+      "name": "Claude Digest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -140,
+        400
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "48RGxhjkOn6nkAnH",
+          "name": "Anthropic API Key"
+        }
+      },
+      "id": "b0288e1c-0677-420a-8fce-68c5c019efab"
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $input.first().json;\nlet text = '';\ntry { text = r.content[0].text; } catch(e) { text = '<p>Could not generate digest. Check workflow executions.</p>'; }\nreturn [{json: {digestHtml: text}}];"
+      },
+      "name": "Extract Digest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        80,
+        400
+      ],
+      "id": "8d9101c3-0073-47ab-925f-49f95dcfb97c"
+    },
+    {
+      "parameters": {
+        "sendTo": "mcraig@exstocura.com",
+        "subject": "=Weekly Email Triage Digest - Exsto Cura",
+        "message": "=<div style='font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px'>{{ $json.digestHtml }}</div>",
+        "options": {}
+      },
+      "name": "Send Digest Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        300,
+        400
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "ulhDjv62tjLURSP5",
+          "name": "Gmail account"
+        }
+      },
+      "id": "02ba3179-e3e5-4b8b-bd6d-b6965d0c9bdb"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1000,
+        320
+      ],
+      "name": "Manual Trigger (Test)",
+      "id": "e709faef-81bf-4256-a3f2-22d8ca1e6d65"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "week",
+              "value": "2026-W13",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "trigger",
+              "value": "scheduled_digest",
+              "type": "string"
+            },
+            {
+              "id": "3",
+              "name": "include_bd",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "4",
+              "name": "include_ops",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "5",
+              "name": "test_mode",
+              "value": true,
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "name": "Test Payload — Weekly Digest",
+      "position": [
+        -1000,
+        480
+      ],
+      "notes": "REMOVE BEFORE PRODUCTION — test injection node",
+      "id": "9d817a84-407f-4da9-8a19-291b384d9fa8"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "test_mode_check",
+              "leftValue": "={{ $json.test_mode }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "name": "IF: test_mode?",
+      "position": [
+        -800,
+        480
+      ],
+      "notes": "TRUE = test mode, routes to Stop node. FALSE = live run, routes to production path.",
+      "id": "4effecd1-8f20-48fc-9b55-f9ec88aee4a9"
+    },
+    {
+      "parameters": {
+        "errorType": "errorMessage",
+        "errorMessage": "TEST MODE ACTIVE — live execution blocked. Set test_mode: false in the Set node to run production path."
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "name": "Stop: TEST MODE ACTIVE",
+      "position": [
+        -600,
+        360
+      ],
+      "notes": "Intentional block. Remove Manual Trigger path when promoting to production.",
+      "id": "3f176a3e-ae17-46ef-b66e-59661a132b44"
+    }
+  ],
+  "connections": {
+    "Monday 8am Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Week Emails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Week Emails": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Stats": {
+      "main": [
+        [
+          {
+            "node": "Claude Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Digest": {
+      "main": [
+        [
+          {
+            "node": "Extract Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Digest": {
+      "main": [
+        [
+          {
+            "node": "Send Digest Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger (Test)": {
+      "main": [
+        [
+          {
+            "node": "Test Payload — Weekly Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test Payload — Weekly Digest": {
+      "main": [
+        [
+          {
+            "node": "IF: test_mode?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: test_mode?": {
+      "main": [
+        [
+          {
+            "node": "Stop: TEST MODE ACTIVE",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Week Emails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": {
+    "node:Monday 8am Trigger": {
+      "recurrenceRules": []
+    }
+  },
+  "meta": null,
+  "pinData": null,
+  "versionId": "bea16f10-0ee8-4319-a5bc-f832c1ef3b68",
+  "activeVersionId": "bea16f10-0ee8-4319-a5bc-f832c1ef3b68",
+  "versionCounter": 16,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-03-29T16:29:03.568Z",
+      "createdAt": "2026-03-29T16:29:03.568Z",
+      "role": "workflow:owner",
+      "workflowId": "TtSLiFqydMLODkHI",
+      "projectId": "Gd7EMXwCMUUP49NR",
+      "project": {
+        "updatedAt": "2026-03-28T14:12:48.769Z",
+        "createdAt": "2026-03-28T14:12:43.065Z",
+        "id": "Gd7EMXwCMUUP49NR",
+        "name": "Michael S Craig <mcraig@exstocura.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "08b1927e-c622-4757-9925-b2a90be3de58"
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": {
+    "updatedAt": "2026-03-29T22:47:01.157Z",
+    "createdAt": "2026-03-29T22:47:01.157Z",
+    "versionId": "bea16f10-0ee8-4319-a5bc-f832c1ef3b68",
+    "workflowId": "TtSLiFqydMLODkHI",
+    "nodes": [
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "weeks",
+                "triggerAtDay": [
+                  1
+                ],
+                "triggerAtHour": 8
+              }
+            ]
+          }
+        },
+        "name": "Monday 8am Trigger",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.2,
+        "position": [
+          -800,
+          400
+        ],
+        "id": "4082869e-b6bb-413a-a73f-00d95bdda24c"
+      },
+      {
+        "parameters": {
+          "resource": "databasePage",
+          "operation": "getAll",
+          "databaseId": {
+            "__rl": true,
+            "value": "bd23e3d8b636495d9b889587dae985e4",
+            "mode": "id"
+          },
+          "returnAll": true,
+          "filterType": "formula",
+          "filters": {
+            "conditions": [
+              {
+                "key": "Timestamp|date",
+                "condition": "pastWeek"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "name": "Get Week Emails",
+        "type": "n8n-nodes-base.notion",
+        "typeVersion": 2,
+        "position": [
+          -580,
+          400
+        ],
+        "credentials": {
+          "notionApi": {
+            "id": "sHCYhXvTmtCNQPUU",
+            "name": "Notion account"
+          }
+        },
+        "id": "84548677-3b64-4c37-bc7d-d1c759bb0749"
+      },
+      {
+        "parameters": {
+          "jsCode": "const items = $input.all();\nconst stats = {total: items.length, urgent: 0, bd: 0, routine: 0, vendor: 0, junk: 0, senders: {}};\nfor (const item of items) {\n  const props = item.json.properties || item.json;\n  const cls = props.Classification?.select?.name || props.classification || 'UNKNOWN';\n  const from = props.From?.rich_text?.[0]?.plain_text || props.original_from || 'Unknown';\n  stats[cls.toLowerCase()] = (stats[cls.toLowerCase()] || 0) + 1;\n  stats.senders[from] = (stats.senders[from] || 0) + 1;\n}\nconst topSenders = Object.entries(stats.senders).sort((a,b) => b[1]-a[1]).slice(0,5).map(([s,c]) => `${s}: ${c} emails`).join('\\n');\nconst summary = `Week Summary:\\nTotal emails: ${stats.total}\\nURGENT: ${stats.urgent}\\nBD: ${stats.bd}\\nROUTINE: ${stats.routine}\\nVENDOR: ${stats.vendor}\\nJUNK: ${stats.junk}\\n\\nTop Senders:\\n${topSenders}`;\nreturn [{json: {summary, ...stats, topSenders}}];"
+        },
+        "name": "Aggregate Stats",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          -360,
+          400
+        ],
+        "id": "c6b30f20-73f6-4a99-89fc-43fcd1557877"
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "https://api.anthropic.com/v1/messages",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "x-api-key",
+                "value": "={{ $credentials.httpHeaderAuth.value }}"
+              },
+              {
+                "name": "anthropic-version",
+                "value": "2023-06-01"
+              },
+              {
+                "name": "content-type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({model:'claude-haiku-3-20250307',max_tokens:1000,messages:[{role:'user',content:'You are an executive assistant for Michael Craig, CEO of Exsto Cura. Write a concise weekly email digest based on this email triage data. Be professional, highlight anything important, and note trends. DATA: '+$json.summary+' Format as a clean HTML email with sections for Key Highlights, Stats Breakdown, and Recommendations.'}]}) }}",
+          "options": {}
+        },
+        "name": "Claude Digest",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4,
+        "position": [
+          -140,
+          400
+        ],
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "48RGxhjkOn6nkAnH",
+            "name": "Anthropic API Key"
+          }
+        },
+        "id": "b0288e1c-0677-420a-8fce-68c5c019efab"
+      },
+      {
+        "parameters": {
+          "jsCode": "const r = $input.first().json;\nlet text = '';\ntry { text = r.content[0].text; } catch(e) { text = '<p>Could not generate digest. Check workflow executions.</p>'; }\nreturn [{json: {digestHtml: text}}];"
+        },
+        "name": "Extract Digest",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          80,
+          400
+        ],
+        "id": "8d9101c3-0073-47ab-925f-49f95dcfb97c"
+      },
+      {
+        "parameters": {
+          "sendTo": "mcraig@exstocura.com",
+          "subject": "=Weekly Email Triage Digest - Exsto Cura",
+          "message": "=<div style='font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px'>{{ $json.digestHtml }}</div>",
+          "options": {}
+        },
+        "name": "Send Digest Email",
+        "type": "n8n-nodes-base.gmail",
+        "typeVersion": 2,
+        "position": [
+          300,
+          400
+        ],
+        "credentials": {
+          "gmailOAuth2": {
+            "id": "ulhDjv62tjLURSP5",
+            "name": "Gmail account"
+          }
+        },
+        "id": "02ba3179-e3e5-4b8b-bd6d-b6965d0c9bdb"
+      },
+      {
+        "parameters": {},
+        "type": "n8n-nodes-base.manualTrigger",
+        "typeVersion": 1,
+        "position": [
+          -1000,
+          320
+        ],
+        "name": "Manual Trigger (Test)",
+        "id": "e709faef-81bf-4256-a3f2-22d8ca1e6d65"
+      },
+      {
+        "parameters": {
+          "mode": "manual",
+          "assignments": {
+            "assignments": [
+              {
+                "id": "1",
+                "name": "week",
+                "value": "2026-W13",
+                "type": "string"
+              },
+              {
+                "id": "2",
+                "name": "trigger",
+                "value": "scheduled_digest",
+                "type": "string"
+              },
+              {
+                "id": "3",
+                "name": "include_bd",
+                "value": true,
+                "type": "boolean"
+              },
+              {
+                "id": "4",
+                "name": "include_ops",
+                "value": true,
+                "type": "boolean"
+              },
+              {
+                "id": "5",
+                "name": "test_mode",
+                "value": true,
+                "type": "boolean"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.4,
+        "name": "Test Payload — Weekly Digest",
+        "position": [
+          -1000,
+          480
+        ],
+        "notes": "REMOVE BEFORE PRODUCTION — test injection node",
+        "id": "9d817a84-407f-4da9-8a19-291b384d9fa8"
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "typeValidation": "strict"
+            },
+            "conditions": [
+              {
+                "id": "test_mode_check",
+                "leftValue": "={{ $json.test_mode }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "name": "IF: test_mode?",
+        "position": [
+          -800,
+          480
+        ],
+        "notes": "TRUE = test mode, routes to Stop node. FALSE = live run, routes to production path.",
+        "id": "4effecd1-8f20-48fc-9b55-f9ec88aee4a9"
+      },
+      {
+        "parameters": {
+          "errorType": "errorMessage",
+          "errorMessage": "TEST MODE ACTIVE — live execution blocked. Set test_mode: false in the Set node to run production path."
+        },
+        "type": "n8n-nodes-base.stopAndError",
+        "typeVersion": 1,
+        "name": "Stop: TEST MODE ACTIVE",
+        "position": [
+          -600,
+          360
+        ],
+        "notes": "Intentional block. Remove Manual Trigger path when promoting to production.",
+        "id": "3f176a3e-ae17-46ef-b66e-59661a132b44"
+      }
+    ],
+    "connections": {
+      "Monday 8am Trigger": {
+        "main": [
+          [
+            {
+              "node": "Get Week Emails",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get Week Emails": {
+        "main": [
+          [
+            {
+              "node": "Aggregate Stats",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Aggregate Stats": {
+        "main": [
+          [
+            {
+              "node": "Claude Digest",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Claude Digest": {
+        "main": [
+          [
+            {
+              "node": "Extract Digest",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Extract Digest": {
+        "main": [
+          [
+            {
+              "node": "Send Digest Email",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Manual Trigger (Test)": {
+        "main": [
+          [
+            {
+              "node": "Test Payload — Weekly Digest",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Test Payload — Weekly Digest": {
+        "main": [
+          [
+            {
+              "node": "IF: test_mode?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "IF: test_mode?": {
+        "main": [
+          [
+            {
+              "node": "Stop: TEST MODE ACTIVE",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Get Week Emails",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "authors": "Michael S Craig",
+    "name": null,
+    "description": null,
+    "autosaved": false,
+    "workflowPublishHistory": [
+      {
+        "createdAt": "2026-03-29T22:47:01.330Z",
+        "id": 42,
+        "workflowId": "TtSLiFqydMLODkHI",
+        "versionId": "bea16f10-0ee8-4319-a5bc-f832c1ef3b68",
+        "event": "activated",
+        "userId": "08b1927e-c622-4757-9925-b2a90be3de58"
+      },
+      {
+        "createdAt": "2026-03-29T22:47:01.248Z",
+        "id": 41,
+        "workflowId": "TtSLiFqydMLODkHI",
+        "versionId": "bea16f10-0ee8-4319-a5bc-f832c1ef3b68",
+        "event": "deactivated",
+        "userId": "08b1927e-c622-4757-9925-b2a90be3de58"
+      }
+    ]
+  }
+}

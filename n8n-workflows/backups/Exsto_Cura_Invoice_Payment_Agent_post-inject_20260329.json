@@ -1,0 +1,1085 @@
+{
+  "updatedAt": "2026-03-29T22:46:58.560Z",
+  "createdAt": "2026-03-29T17:22:58.271Z",
+  "id": "DbRCcPqBatSFLR27",
+  "name": "Exsto Cura — Invoice & Payment Agent",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 1,3,5"
+            }
+          ]
+        }
+      },
+      "name": "Schedule — Mon, Wed, Fri 9am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ],
+      "notes": "Checks invoice status three times per week — enough to stay on top without being annoying",
+      "id": "282046de-ae69-4d62-a00e-88412a67a0d8"
+    },
+    {
+      "parameters": {
+        "url": "https://api.honeybook.com/api/v2/invoices?status=sent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "name": "HoneyBook — Get Outstanding Invoices",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        480,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "48RGxhjkOn6nkAnH",
+          "name": "Anthropic API Key"
+        }
+      },
+      "notes": "HoneyBook API key found in: Account Settings > Integrations > API",
+      "id": "4e0d9721-3053-42f8-b9a0-181d833b95aa"
+    },
+    {
+      "parameters": {
+        "jsCode": "const invoices = $input.first().json.invoices || [];\nconst today = new Date();\n\nreturn invoices.map(inv => {\n  const sentDate = new Date(inv.sent_at);\n  const daysOutstanding = Math.floor((today - sentDate) / (1000 * 60 * 60 * 24));\n  \n  let status;\n  if (daysOutstanding < 7)  status = 'CURRENT';\n  else if (daysOutstanding < 14) status = 'FOLLOW_UP';\n  else if (daysOutstanding < 30) status = 'OVERDUE';\n  else status = 'ESCALATE';\n  \n  return {\n    json: {\n      invoice_id: inv.id,\n      client_name: inv.client_name,\n      amount: inv.amount,\n      sent_date: inv.sent_at,\n      days_outstanding: daysOutstanding,\n      due_date: inv.due_date,\n      status,\n      invoice_number: inv.invoice_number\n    }\n  };\n}).filter(i => i.json.status !== 'CURRENT');"
+      },
+      "name": "Calculate Days Outstanding",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        300
+      ],
+      "id": "8eae5abe-2765-43a3-8e25-4295899524df"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "esc1",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "ESCALATE",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is ESCALATE (30+ days)?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        960,
+        300
+      ],
+      "id": "1c577852-64df-4330-a850-833bb0c4e2fa"
+    },
+    {
+      "parameters": {
+        "model": "claude-haiku-3-20250307",
+        "messages": {
+          "values": [
+            {
+              "role": "user",
+              "content": "=Write a professional payment follow-up message from Michael Craig at Exsto Cura Consilium.\n\nINVOICE DETAILS:\n- Client: {{ $json.client_name }}\n- Invoice #: {{ $json.invoice_number }}\n- Amount: ${{ $json.amount }}\n- Days Outstanding: {{ $json.days_outstanding }}\n- Status: {{ $json.status }}\n\nTone guidance by status:\n- FOLLOW_UP (7-14 days): Friendly, light touch, assume oversight\n- OVERDUE (14-30 days): Professional, clear, note the due date\n- ESCALATE (30+ days): Firm, professional, reference contract terms\n\nWrite ONLY the email body. No subject line. 3-5 sentences maximum. Do not be aggressive. Maintain the professional senior consultant relationship. Sign off as Michael Craig, Exsto Cura Consilium."
+            }
+          ]
+        },
+        "options": {
+          "maxTokens": 300
+        }
+      },
+      "name": "Claude — Draft Follow-up Message",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1,
+      "position": [
+        960,
+        500
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "u85U62dgbcEwpdkT",
+          "name": "Anthropic account"
+        }
+      },
+      "id": "00386c67-33fd-4a25-9fa3-99c6b5295766"
+    },
+    {
+      "parameters": {
+        "sendTo": "mcraig@exstocura.com",
+        "subject": "=🔴 ESCALATE — Invoice #{{ $json.invoice_number }} | {{ $json.client_name }} | ${{ $json.amount }} | {{ $json.days_outstanding }} Days",
+        "emailType": "html",
+        "message": "=<div style='font-family: Georgia, serif; max-width: 600px; padding: 20px; background: #0d0d0d; color: #e8e4dc;'><h2 style='color: #e07070; border-bottom: 1px solid #333; padding-bottom: 10px;'>🔴 Invoice Escalation Alert</h2><p><strong>Client:</strong> {{ $json.client_name }}</p><p><strong>Invoice:</strong> #{{ $json.invoice_number }}</p><p><strong>Amount:</strong> ${{ $json.amount }}</p><p><strong>Days Outstanding:</strong> {{ $json.days_outstanding }} days</p><p><strong>Status:</strong> {{ $json.status }}</p><hr style='border-color: #333;'/><p style='color: #e07070;'>This invoice is 30+ days outstanding. Review your contract terms and consider direct contact with the client.</p><p>Log into HoneyBook to take action.</p><hr style='border-color: #333;'/><p style='color: #666; font-size: 12px;'>Exsto Cura Invoice Agent</p></div>",
+        "options": {}
+      },
+      "name": "Alert Michael — ESCALATE",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        200
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "ulhDjv62tjLURSP5",
+          "name": "Gmail account"
+        }
+      },
+      "id": "20fd0659-ae1d-4a78-a01c-217c8ed73731"
+    },
+    {
+      "parameters": {
+        "sendTo": "mcraig@exstocura.com",
+        "subject": "=💛 Invoice Follow-up Draft Ready — {{ $json.client_name }} | #{{ $json.invoice_number }} | {{ $json.days_outstanding }} Days",
+        "emailType": "html",
+        "message": "=<div style='font-family: Georgia, serif; max-width: 600px; padding: 20px; background: #0d0d0d; color: #e8e4dc;'><h2 style='color: #c9a96e; border-bottom: 1px solid #333; padding-bottom: 10px;'>💛 Invoice Follow-up Draft</h2><p><strong>Client:</strong> {{ $('Calculate Days Outstanding').first().json.client_name }}</p><p><strong>Invoice:</strong> #{{ $('Calculate Days Outstanding').first().json.invoice_number }}</p><p><strong>Amount:</strong> ${{ $('Calculate Days Outstanding').first().json.amount }}</p><p><strong>Days Outstanding:</strong> {{ $('Calculate Days Outstanding').first().json.days_outstanding }} days</p><hr style='border-color: #333;'/><h3 style='color: #c9a96e;'>Suggested Follow-up Message</h3><div style='background: #1a1a1a; padding: 15px; border-left: 3px solid #c9a96e; white-space: pre-wrap;'>{{ $json.text }}</div><hr style='border-color: #333;'/><p style='color: #999; font-size: 12px;'>Review, edit if needed, and send from HoneyBook or directly. Exsto Cura Invoice Agent.</p></div>",
+        "options": {}
+      },
+      "name": "Send Draft to Michael",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        500
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "ulhDjv62tjLURSP5",
+          "name": "Gmail account"
+        }
+      },
+      "id": "b5001289-033b-4e7d-9d9f-cb2ca0fc55cc"
+    },
+    {
+      "parameters": {
+        "databaseId": {
+          "__rl": true,
+          "value": "f44ffe20ef11445aa9728e1358d951ec",
+          "mode": "id"
+        },
+        "title": "={{ $('Calculate Days Outstanding').item.json.client_name }} â€” Invoice #{{ $('Calculate Days Outstanding').item.json.invoice_number }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Client|rich_text",
+              "textContent": "={{ $('Calculate Days Outstanding').item.json.client_name }}"
+            },
+            {
+              "key": "Amount|number",
+              "numberValue": "={{ $('Calculate Days Outstanding').item.json.amount }}"
+            },
+            {
+              "key": "Days Outstanding|number",
+              "numberValue": "={{ $('Calculate Days Outstanding').item.json.days_outstanding }}"
+            },
+            {
+              "key": "Status|select",
+              "select": "={{ $('Calculate Days Outstanding').item.json.status }}"
+            },
+            {
+              "key": "Last Checked|date",
+              "includeTime": true,
+              "date": "={{ new Date().toISOString() }}"
+            }
+          ]
+        },
+        "resource": "databasePage"
+      },
+      "name": "Log to Notion Finance Tracker",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        380
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "sHCYhXvTmtCNQPUU",
+          "name": "Notion account"
+        }
+      },
+      "id": "f7ffbd7f-763b-4fee-a608-6a5524954218"
+    },
+    {
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -200,
+        700
+      ],
+      "parameters": {},
+      "id": "711d93a5-b830-47e4-8795-d283703c5a66"
+    },
+    {
+      "name": "Error Notify",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        80,
+        700
+      ],
+      "parameters": {
+        "sendTo": "mcraig@exstocura.com",
+        "subject": "=n8n error: Invoice Agent",
+        "emailType": "html",
+        "message": "=<p><b>Workflow</b>: Invoice Agent</p><p><b>Error</b>: {{ $json.execution?.error?.message || 'Unknown' }}</p><p><a href=\"https://exo-project-integrity.app.n8n.cloud\">Open n8n</a></p>",
+        "options": {}
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "ulhDjv62tjLURSP5",
+          "name": "Gmail account"
+        }
+      },
+      "id": "d81ca677-f3bd-4295-940b-af464003a83a"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        40,
+        220
+      ],
+      "name": "Manual Trigger (Test)",
+      "id": "99cbfa71-f679-4510-a93b-2f91ef1d67a7"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "vendor",
+              "value": "NKT Cables GmbH",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "invoice_number",
+              "value": "NKT-2026-0441",
+              "type": "string"
+            },
+            {
+              "id": "3",
+              "name": "amount",
+              "value": 142500,
+              "type": "number"
+            },
+            {
+              "id": "4",
+              "name": "currency",
+              "value": "USD",
+              "type": "string"
+            },
+            {
+              "id": "5",
+              "name": "due_date",
+              "value": "2026-04-15",
+              "type": "string"
+            },
+            {
+              "id": "6",
+              "name": "project",
+              "value": "CHPE",
+              "type": "string"
+            },
+            {
+              "id": "7",
+              "name": "test_mode",
+              "value": true,
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "name": "Test Payload — Invoice",
+      "position": [
+        40,
+        380
+      ],
+      "notes": "REMOVE BEFORE PRODUCTION — test injection node",
+      "id": "b58e483e-6f09-4a40-a972-51f3758c0e65"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "test_mode_check",
+              "leftValue": "={{ $json.test_mode }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "name": "IF: test_mode?",
+      "position": [
+        240,
+        380
+      ],
+      "notes": "TRUE = test mode, routes to Stop node. FALSE = live run, routes to production path.",
+      "id": "223a1527-6785-46f8-90f5-42846e61764e"
+    },
+    {
+      "parameters": {
+        "errorType": "errorMessage",
+        "errorMessage": "TEST MODE ACTIVE — live execution blocked. Set test_mode: false in the Set node to run production path."
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "name": "Stop: TEST MODE ACTIVE",
+      "position": [
+        440,
+        260
+      ],
+      "notes": "Intentional block. Remove Manual Trigger path when promoting to production.",
+      "id": "fc913235-94c0-441b-b703-969e1bd1d39b"
+    }
+  ],
+  "connections": {
+    "Schedule — Mon, Wed, Fri 9am": {
+      "main": [
+        [
+          {
+            "node": "HoneyBook — Get Outstanding Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HoneyBook — Get Outstanding Invoices": {
+      "main": [
+        [
+          {
+            "node": "Calculate Days Outstanding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Days Outstanding": {
+      "main": [
+        [
+          {
+            "node": "Is ESCALATE (30+ days)?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is ESCALATE (30+ days)?": {
+      "main": [
+        [
+          {
+            "node": "Alert Michael — ESCALATE",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Claude — Draft Follow-up Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude — Draft Follow-up Message": {
+      "main": [
+        [
+          {
+            "node": "Send Draft to Michael",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log to Notion Finance Tracker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Michael — ESCALATE": {
+      "main": [
+        [
+          {
+            "node": "Log to Notion Finance Tracker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Error Notify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger (Test)": {
+      "main": [
+        [
+          {
+            "node": "Test Payload — Invoice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test Payload — Invoice": {
+      "main": [
+        [
+          {
+            "node": "IF: test_mode?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: test_mode?": {
+      "main": [
+        [
+          {
+            "node": "Stop: TEST MODE ACTIVE",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HoneyBook — Get Outstanding Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": {
+    "node:Schedule — Mon, Wed, Fri 9am": {
+      "recurrenceRules": []
+    }
+  },
+  "meta": null,
+  "pinData": null,
+  "versionId": "8bfa46e6-774a-4070-ac30-73a78e76bd92",
+  "activeVersionId": "8bfa46e6-774a-4070-ac30-73a78e76bd92",
+  "versionCounter": 11,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-03-29T17:22:58.273Z",
+      "createdAt": "2026-03-29T17:22:58.273Z",
+      "role": "workflow:owner",
+      "workflowId": "DbRCcPqBatSFLR27",
+      "projectId": "Gd7EMXwCMUUP49NR",
+      "project": {
+        "updatedAt": "2026-03-28T14:12:48.769Z",
+        "createdAt": "2026-03-28T14:12:43.065Z",
+        "id": "Gd7EMXwCMUUP49NR",
+        "name": "Michael S Craig <mcraig@exstocura.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "08b1927e-c622-4757-9925-b2a90be3de58"
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": {
+    "updatedAt": "2026-03-29T22:46:58.561Z",
+    "createdAt": "2026-03-29T22:46:58.561Z",
+    "versionId": "8bfa46e6-774a-4070-ac30-73a78e76bd92",
+    "workflowId": "DbRCcPqBatSFLR27",
+    "nodes": [
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "cronExpression",
+                "expression": "0 9 * * 1,3,5"
+              }
+            ]
+          }
+        },
+        "name": "Schedule — Mon, Wed, Fri 9am",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1,
+        "position": [
+          240,
+          300
+        ],
+        "notes": "Checks invoice status three times per week — enough to stay on top without being annoying",
+        "id": "282046de-ae69-4d62-a00e-88412a67a0d8"
+      },
+      {
+        "parameters": {
+          "url": "https://api.honeybook.com/api/v2/invoices?status=sent",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "options": {
+            "response": {
+              "response": {
+                "responseFormat": "json"
+              }
+            }
+          }
+        },
+        "name": "HoneyBook — Get Outstanding Invoices",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4,
+        "position": [
+          480,
+          300
+        ],
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "48RGxhjkOn6nkAnH",
+            "name": "Anthropic API Key"
+          }
+        },
+        "notes": "HoneyBook API key found in: Account Settings > Integrations > API",
+        "id": "4e0d9721-3053-42f8-b9a0-181d833b95aa"
+      },
+      {
+        "parameters": {
+          "jsCode": "const invoices = $input.first().json.invoices || [];\nconst today = new Date();\n\nreturn invoices.map(inv => {\n  const sentDate = new Date(inv.sent_at);\n  const daysOutstanding = Math.floor((today - sentDate) / (1000 * 60 * 60 * 24));\n  \n  let status;\n  if (daysOutstanding < 7)  status = 'CURRENT';\n  else if (daysOutstanding < 14) status = 'FOLLOW_UP';\n  else if (daysOutstanding < 30) status = 'OVERDUE';\n  else status = 'ESCALATE';\n  \n  return {\n    json: {\n      invoice_id: inv.id,\n      client_name: inv.client_name,\n      amount: inv.amount,\n      sent_date: inv.sent_at,\n      days_outstanding: daysOutstanding,\n      due_date: inv.due_date,\n      status,\n      invoice_number: inv.invoice_number\n    }\n  };\n}).filter(i => i.json.status !== 'CURRENT');"
+        },
+        "name": "Calculate Days Outstanding",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          720,
+          300
+        ],
+        "id": "8eae5abe-2765-43a3-8e25-4295899524df"
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "typeValidation": "strict"
+            },
+            "conditions": [
+              {
+                "id": "esc1",
+                "leftValue": "={{ $json.status }}",
+                "rightValue": "ESCALATE",
+                "operator": {
+                  "type": "string",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "name": "Is ESCALATE (30+ days)?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          960,
+          300
+        ],
+        "id": "1c577852-64df-4330-a850-833bb0c4e2fa"
+      },
+      {
+        "parameters": {
+          "model": "claude-haiku-3-20250307",
+          "messages": {
+            "values": [
+              {
+                "role": "user",
+                "content": "=Write a professional payment follow-up message from Michael Craig at Exsto Cura Consilium.\n\nINVOICE DETAILS:\n- Client: {{ $json.client_name }}\n- Invoice #: {{ $json.invoice_number }}\n- Amount: ${{ $json.amount }}\n- Days Outstanding: {{ $json.days_outstanding }}\n- Status: {{ $json.status }}\n\nTone guidance by status:\n- FOLLOW_UP (7-14 days): Friendly, light touch, assume oversight\n- OVERDUE (14-30 days): Professional, clear, note the due date\n- ESCALATE (30+ days): Firm, professional, reference contract terms\n\nWrite ONLY the email body. No subject line. 3-5 sentences maximum. Do not be aggressive. Maintain the professional senior consultant relationship. Sign off as Michael Craig, Exsto Cura Consilium."
+              }
+            ]
+          },
+          "options": {
+            "maxTokens": 300
+          }
+        },
+        "name": "Claude — Draft Follow-up Message",
+        "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+        "typeVersion": 1,
+        "position": [
+          960,
+          500
+        ],
+        "credentials": {
+          "anthropicApi": {
+            "id": "u85U62dgbcEwpdkT",
+            "name": "Anthropic account"
+          }
+        },
+        "id": "00386c67-33fd-4a25-9fa3-99c6b5295766"
+      },
+      {
+        "parameters": {
+          "sendTo": "mcraig@exstocura.com",
+          "subject": "=🔴 ESCALATE — Invoice #{{ $json.invoice_number }} | {{ $json.client_name }} | ${{ $json.amount }} | {{ $json.days_outstanding }} Days",
+          "emailType": "html",
+          "message": "=<div style='font-family: Georgia, serif; max-width: 600px; padding: 20px; background: #0d0d0d; color: #e8e4dc;'><h2 style='color: #e07070; border-bottom: 1px solid #333; padding-bottom: 10px;'>🔴 Invoice Escalation Alert</h2><p><strong>Client:</strong> {{ $json.client_name }}</p><p><strong>Invoice:</strong> #{{ $json.invoice_number }}</p><p><strong>Amount:</strong> ${{ $json.amount }}</p><p><strong>Days Outstanding:</strong> {{ $json.days_outstanding }} days</p><p><strong>Status:</strong> {{ $json.status }}</p><hr style='border-color: #333;'/><p style='color: #e07070;'>This invoice is 30+ days outstanding. Review your contract terms and consider direct contact with the client.</p><p>Log into HoneyBook to take action.</p><hr style='border-color: #333;'/><p style='color: #666; font-size: 12px;'>Exsto Cura Invoice Agent</p></div>",
+          "options": {}
+        },
+        "name": "Alert Michael — ESCALATE",
+        "type": "n8n-nodes-base.gmail",
+        "typeVersion": 2,
+        "position": [
+          1200,
+          200
+        ],
+        "credentials": {
+          "gmailOAuth2": {
+            "id": "ulhDjv62tjLURSP5",
+            "name": "Gmail account"
+          }
+        },
+        "id": "20fd0659-ae1d-4a78-a01c-217c8ed73731"
+      },
+      {
+        "parameters": {
+          "sendTo": "mcraig@exstocura.com",
+          "subject": "=💛 Invoice Follow-up Draft Ready — {{ $json.client_name }} | #{{ $json.invoice_number }} | {{ $json.days_outstanding }} Days",
+          "emailType": "html",
+          "message": "=<div style='font-family: Georgia, serif; max-width: 600px; padding: 20px; background: #0d0d0d; color: #e8e4dc;'><h2 style='color: #c9a96e; border-bottom: 1px solid #333; padding-bottom: 10px;'>💛 Invoice Follow-up Draft</h2><p><strong>Client:</strong> {{ $('Calculate Days Outstanding').first().json.client_name }}</p><p><strong>Invoice:</strong> #{{ $('Calculate Days Outstanding').first().json.invoice_number }}</p><p><strong>Amount:</strong> ${{ $('Calculate Days Outstanding').first().json.amount }}</p><p><strong>Days Outstanding:</strong> {{ $('Calculate Days Outstanding').first().json.days_outstanding }} days</p><hr style='border-color: #333;'/><h3 style='color: #c9a96e;'>Suggested Follow-up Message</h3><div style='background: #1a1a1a; padding: 15px; border-left: 3px solid #c9a96e; white-space: pre-wrap;'>{{ $json.text }}</div><hr style='border-color: #333;'/><p style='color: #999; font-size: 12px;'>Review, edit if needed, and send from HoneyBook or directly. Exsto Cura Invoice Agent.</p></div>",
+          "options": {}
+        },
+        "name": "Send Draft to Michael",
+        "type": "n8n-nodes-base.gmail",
+        "typeVersion": 2,
+        "position": [
+          1200,
+          500
+        ],
+        "credentials": {
+          "gmailOAuth2": {
+            "id": "ulhDjv62tjLURSP5",
+            "name": "Gmail account"
+          }
+        },
+        "id": "b5001289-033b-4e7d-9d9f-cb2ca0fc55cc"
+      },
+      {
+        "parameters": {
+          "databaseId": {
+            "__rl": true,
+            "value": "f44ffe20ef11445aa9728e1358d951ec",
+            "mode": "id"
+          },
+          "title": "={{ $('Calculate Days Outstanding').item.json.client_name }} â€” Invoice #{{ $('Calculate Days Outstanding').item.json.invoice_number }}",
+          "propertiesUi": {
+            "propertyValues": [
+              {
+                "key": "Client|rich_text",
+                "textContent": "={{ $('Calculate Days Outstanding').item.json.client_name }}"
+              },
+              {
+                "key": "Amount|number",
+                "numberValue": "={{ $('Calculate Days Outstanding').item.json.amount }}"
+              },
+              {
+                "key": "Days Outstanding|number",
+                "numberValue": "={{ $('Calculate Days Outstanding').item.json.days_outstanding }}"
+              },
+              {
+                "key": "Status|select",
+                "select": "={{ $('Calculate Days Outstanding').item.json.status }}"
+              },
+              {
+                "key": "Last Checked|date",
+                "includeTime": true,
+                "date": "={{ new Date().toISOString() }}"
+              }
+            ]
+          },
+          "resource": "databasePage"
+        },
+        "name": "Log to Notion Finance Tracker",
+        "type": "n8n-nodes-base.notion",
+        "typeVersion": 2,
+        "position": [
+          1440,
+          380
+        ],
+        "credentials": {
+          "notionApi": {
+            "id": "sHCYhXvTmtCNQPUU",
+            "name": "Notion account"
+          }
+        },
+        "id": "f7ffbd7f-763b-4fee-a608-6a5524954218"
+      },
+      {
+        "name": "Error Trigger",
+        "type": "n8n-nodes-base.errorTrigger",
+        "typeVersion": 1,
+        "position": [
+          -200,
+          700
+        ],
+        "parameters": {},
+        "id": "711d93a5-b830-47e4-8795-d283703c5a66"
+      },
+      {
+        "name": "Error Notify",
+        "type": "n8n-nodes-base.gmail",
+        "typeVersion": 2,
+        "position": [
+          80,
+          700
+        ],
+        "parameters": {
+          "sendTo": "mcraig@exstocura.com",
+          "subject": "=n8n error: Invoice Agent",
+          "emailType": "html",
+          "message": "=<p><b>Workflow</b>: Invoice Agent</p><p><b>Error</b>: {{ $json.execution?.error?.message || 'Unknown' }}</p><p><a href=\"https://exo-project-integrity.app.n8n.cloud\">Open n8n</a></p>",
+          "options": {}
+        },
+        "credentials": {
+          "gmailOAuth2": {
+            "id": "ulhDjv62tjLURSP5",
+            "name": "Gmail account"
+          }
+        },
+        "id": "d81ca677-f3bd-4295-940b-af464003a83a"
+      },
+      {
+        "parameters": {},
+        "type": "n8n-nodes-base.manualTrigger",
+        "typeVersion": 1,
+        "position": [
+          40,
+          220
+        ],
+        "name": "Manual Trigger (Test)",
+        "id": "99cbfa71-f679-4510-a93b-2f91ef1d67a7"
+      },
+      {
+        "parameters": {
+          "mode": "manual",
+          "assignments": {
+            "assignments": [
+              {
+                "id": "1",
+                "name": "vendor",
+                "value": "NKT Cables GmbH",
+                "type": "string"
+              },
+              {
+                "id": "2",
+                "name": "invoice_number",
+                "value": "NKT-2026-0441",
+                "type": "string"
+              },
+              {
+                "id": "3",
+                "name": "amount",
+                "value": 142500,
+                "type": "number"
+              },
+              {
+                "id": "4",
+                "name": "currency",
+                "value": "USD",
+                "type": "string"
+              },
+              {
+                "id": "5",
+                "name": "due_date",
+                "value": "2026-04-15",
+                "type": "string"
+              },
+              {
+                "id": "6",
+                "name": "project",
+                "value": "CHPE",
+                "type": "string"
+              },
+              {
+                "id": "7",
+                "name": "test_mode",
+                "value": true,
+                "type": "boolean"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.4,
+        "name": "Test Payload — Invoice",
+        "position": [
+          40,
+          380
+        ],
+        "notes": "REMOVE BEFORE PRODUCTION — test injection node",
+        "id": "b58e483e-6f09-4a40-a972-51f3758c0e65"
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "typeValidation": "strict"
+            },
+            "conditions": [
+              {
+                "id": "test_mode_check",
+                "leftValue": "={{ $json.test_mode }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "name": "IF: test_mode?",
+        "position": [
+          240,
+          380
+        ],
+        "notes": "TRUE = test mode, routes to Stop node. FALSE = live run, routes to production path.",
+        "id": "223a1527-6785-46f8-90f5-42846e61764e"
+      },
+      {
+        "parameters": {
+          "errorType": "errorMessage",
+          "errorMessage": "TEST MODE ACTIVE — live execution blocked. Set test_mode: false in the Set node to run production path."
+        },
+        "type": "n8n-nodes-base.stopAndError",
+        "typeVersion": 1,
+        "name": "Stop: TEST MODE ACTIVE",
+        "position": [
+          440,
+          260
+        ],
+        "notes": "Intentional block. Remove Manual Trigger path when promoting to production.",
+        "id": "fc913235-94c0-441b-b703-969e1bd1d39b"
+      }
+    ],
+    "connections": {
+      "Schedule — Mon, Wed, Fri 9am": {
+        "main": [
+          [
+            {
+              "node": "HoneyBook — Get Outstanding Invoices",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "HoneyBook — Get Outstanding Invoices": {
+        "main": [
+          [
+            {
+              "node": "Calculate Days Outstanding",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Calculate Days Outstanding": {
+        "main": [
+          [
+            {
+              "node": "Is ESCALATE (30+ days)?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Is ESCALATE (30+ days)?": {
+        "main": [
+          [
+            {
+              "node": "Alert Michael — ESCALATE",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Claude — Draft Follow-up Message",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Claude — Draft Follow-up Message": {
+        "main": [
+          [
+            {
+              "node": "Send Draft to Michael",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Log to Notion Finance Tracker",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Alert Michael — ESCALATE": {
+        "main": [
+          [
+            {
+              "node": "Log to Notion Finance Tracker",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Error Trigger": {
+        "main": [
+          [
+            {
+              "node": "Error Notify",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Manual Trigger (Test)": {
+        "main": [
+          [
+            {
+              "node": "Test Payload — Invoice",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Test Payload — Invoice": {
+        "main": [
+          [
+            {
+              "node": "IF: test_mode?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "IF: test_mode?": {
+        "main": [
+          [
+            {
+              "node": "Stop: TEST MODE ACTIVE",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "HoneyBook — Get Outstanding Invoices",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "authors": "Michael S Craig",
+    "name": null,
+    "description": null,
+    "autosaved": false,
+    "workflowPublishHistory": [
+      {
+        "createdAt": "2026-03-29T22:46:58.737Z",
+        "id": 36,
+        "workflowId": "DbRCcPqBatSFLR27",
+        "versionId": "8bfa46e6-774a-4070-ac30-73a78e76bd92",
+        "event": "activated",
+        "userId": "08b1927e-c622-4757-9925-b2a90be3de58"
+      },
+      {
+        "createdAt": "2026-03-29T22:46:58.657Z",
+        "id": 35,
+        "workflowId": "DbRCcPqBatSFLR27",
+        "versionId": "8bfa46e6-774a-4070-ac30-73a78e76bd92",
+        "event": "deactivated",
+        "userId": "08b1927e-c622-4757-9925-b2a90be3de58"
+      }
+    ]
+  }
+}

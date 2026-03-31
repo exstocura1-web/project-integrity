@@ -1,0 +1,19 @@
+---
+description: Exsto technology stack and hosting context for every agent session
+alwaysApply: true
+---
+
+# Technology stack (authoritative for code and integrations)
+
+When building, debugging, or recommending tooling, assume this stack:
+
+- **Schedule / controls:** Primavera P6, SmartPM, ALICE Technologies, Acumen Fuse  
+- **Application platform:** Firebase, React, Node.js (async/await for JS)  
+- **Deploy / automation:** Vercel, n8n  
+- **IDE / AI:** Cursor, Claude  
+- **Web hosting:** cPanel at exstocura.com  
+
+**Internal product:** Project Integrity — Firebase/React/Node.js AI platform (beta).  
+**Schedule IP:** XER forensics workflow; BIR™ and TRIAGE-IMPACT™ are methodology names (use ™ in prose).
+
+For voice, commercial context, and full code-style tokens (PowerShell helpers, dark theme, fonts, brand colors), follow the project root `.cursorrules` file.

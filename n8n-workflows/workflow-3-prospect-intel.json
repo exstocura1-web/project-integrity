@@ -1,0 +1,111 @@
+{
+  "name": "Exsto Cura — Prospect Intelligence Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 7 * * 1" }] }
+      },
+      "name": "Schedule — Every Monday 7am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "notes": "Runs every Monday morning — weekly prospect intelligence briefing in your inbox before the week starts"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── PROSPECT WATCHLIST ─────────────────────────────────────\n// Add companies and projects you are actively pursuing.\n// Update this list as your pipeline evolves.\n\nconst prospects = [\n  {\n    company: 'TDI — Transmission Developers Inc',\n    type: 'Active Client — Expansion',\n    keywords: ['HVDC transmission', 'Champlain Hudson', 'Blackstone infrastructure', 'TDI project'],\n    contact: 'Scott',\n    priority: 'ANCHOR'\n  },\n  {\n    company: 'Ørsted',\n    type: 'Former Client — Re-engagement',\n    keywords: ['Ørsted offshore wind', 'Ørsted US project controls', 'Ørsted capital program'],\n    contact: 'Previous contacts',\n    priority: 'HIGH'\n  },\n  {\n    company: 'Eversource Energy',\n    type: 'Former Client — Re-engagement',\n    keywords: ['Eversource transmission', 'Eversource capital projects', 'Eversource infrastructure'],\n    contact: 'Previous contacts',\n    priority: 'HIGH'\n  },\n  {\n    company: 'Clean Path New York',\n    type: 'Target — HVDC Transmission',\n    keywords: ['Clean Path NY HVDC', 'Clean Path transmission project', 'New York offshore wind transmission'],\n    contact: 'Unknown — research needed',\n    priority: 'MEDIUM'\n  },\n  {\n    company: 'Sunrise Wind',\n    type: 'Target — Offshore Wind Transmission',\n    keywords: ['Sunrise Wind project', 'Equinor offshore wind NY', 'offshore wind transmission controls'],\n    contact: 'Unknown — research needed',\n    priority: 'MEDIUM'\n  }\n];\n\nreturn prospects.map(p => ({ json: p }));"
+      },
+      "name": "Load Prospect Watchlist",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://newsapi.org/v2/everything?q={{ encodeURIComponent($json.keywords[0]) }}&sortBy=publishedAt&pageSize=5&apiKey=YOUR_NEWSAPI_KEY",
+        "options": { "response": { "response": { "responseFormat": "json" } } }
+      },
+      "name": "News API — Search Company News",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [720, 300],
+      "notes": "Get free API key at newsapi.org — free tier gives 100 requests/day, more than enough"
+    },
+    {
+      "parameters": {
+        "model": "claude-sonnet-4-20250514",
+        "messages": {
+          "values": [
+            {
+              "role": "user",
+              "content": "=You are the business development intelligence assistant for Michael Craig at Exsto Cura Consilium.\n\nMichael is a Senior Principal project controls consultant specializing in AI-enabled project controls for HVDC transmission, offshore wind, and energy infrastructure. His key offerings are:\n- Bid Schedule Intelligence Review (BIR) — pre-award schedule stress testing\n- SmartPM-powered construction schedule monitoring\n- Owner-side Integrated Master Schedule management\n- ALICE Technologies AI simulation\n\nAnalyze the following prospect and recent news. Write a crisp intelligence briefing.\n\nCOMPANY: {{ $('Load Prospect Watchlist').first().json.company }}\nTYPE: {{ $('Load Prospect Watchlist').first().json.type }}\nPRIORITY: {{ $('Load Prospect Watchlist').first().json.priority }}\nKNOWN CONTACT: {{ $('Load Prospect Watchlist').first().json.contact }}\n\nRECENT NEWS:\n{{ JSON.stringify($json.articles?.slice(0,5).map(a => ({ title: a.title, source: a.source?.name, date: a.publishedAt, description: a.description })), null, 2) }}\n\nWrite a briefing with these sections:\n1. SITUATION (2-3 sentences — what is happening with this company right now)\n2. CAPITAL PROGRAM SIGNALS (any new projects, bids, awards, or program announcements relevant to project controls)\n3. MICHAEL'S ANGLE (specific, tailored reason to reach out NOW based on the news — or note if timing isn't right)\n4. OUTREACH DRAFT (a 4-6 sentence LinkedIn message or email opener Michael can send this week — specific to the news, not generic)\n5. NEXT ACTION (one clear step)\n\nBe specific. Reference actual news items. If no relevant news found, say so clearly and suggest a different outreach angle."
+            }
+          ]
+        },
+        "options": { "maxTokens": 1000 }
+      },
+      "name": "Claude — Generate Prospect Briefing",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1,
+      "position": [960, 300],
+      "credentials": { "anthropicApi": { "name": "Anthropic — Exsto Cura" } }
+    },
+    {
+      "parameters": {
+        "databaseId": "YOUR_NOTION_BD_DATABASE_ID",
+        "title": "={{ $('Load Prospect Watchlist').first().json.company }} — Intel {{ new Date().toLocaleDateString() }}",
+        "propertiesUi": {
+          "propertyValues": [
+            { "key": "Company", "type": "rich_text", "textValue": "={{ $('Load Prospect Watchlist').first().json.company }}" },
+            { "key": "Priority", "type": "select", "selectValue": "={{ $('Load Prospect Watchlist').first().json.priority }}" },
+            { "key": "Type", "type": "rich_text", "textValue": "={{ $('Load Prospect Watchlist').first().json.type }}" },
+            { "key": "Week", "type": "date", "dateValue": "={{ new Date().toISOString() }}" },
+            { "key": "Status", "type": "select", "selectValue": "Briefing Ready" }
+          ]
+        },
+        "blockUi": {
+          "blockValues": [
+            { "type": "paragraph", "richText": { "text": "={{ $json.text }}" } }
+          ]
+        }
+      },
+      "name": "Save Briefing to Notion BD",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [1200, 300],
+      "credentials": { "notionApi": { "name": "Notion — Exsto Cura" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collect all prospect briefings into one weekly digest\nconst allItems = $input.all();\nconst week = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });\n\nlet digest = `<div style='font-family: Georgia, serif; max-width: 680px; padding: 20px; background: #0d0d0d; color: #e8e4dc;'>`;\ndigest += `<h2 style='color: #c9a96e; border-bottom: 1px solid #333; padding-bottom: 10px;'>📡 Weekly BD Intelligence Briefing</h2>`;\ndigest += `<p style='color: #666; font-size: 13px;'>${week}</p><br/>`;\n\nallItems.forEach((item, i) => {\n  const company = item.json.company || 'Unknown';\n  const text = item.json.text || '';\n  digest += `<div style='margin-bottom: 30px; padding: 15px; background: #1a1a1a; border-left: 3px solid #c9a96e;'>`;\n  digest += `<h3 style='color: #c9a96e; margin-bottom: 10px;'>${company}</h3>`;\n  digest += `<div style='white-space: pre-wrap; font-size: 13px; line-height: 1.6;'>${text.substring(0, 600)}...</div>`;\n  digest += `</div>`;\n});\n\ndigest += `<hr style='border-color: #333;'/><p style='color: #666; font-size: 11px;'>Exsto Cura Prospect Agent · Full briefings saved in Notion BD workspace</p></div>`;\n\nreturn [{ json: { digest, count: allItems.length, week } }];"
+      },
+      "name": "Build Weekly Digest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 500]
+    },
+    {
+      "parameters": {
+        "sendTo": "mcraig@exstocura.com",
+        "subject": "=📡 Weekly BD Intel — {{ $json.count }} Prospects | {{ $json.week }}",
+        "emailType": "html",
+        "message": "={{ $json.digest }}",
+        "options": {}
+      },
+      "name": "Send Weekly BD Digest",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [1440, 500],
+      "credentials": { "gmailOAuth2": { "name": "Gmail — mcraig@exstocura.com" } }
+    }
+  ],
+  "connections": {
+    "Schedule — Every Monday 7am": { "main": [[{ "node": "Load Prospect Watchlist", "type": "main", "index": 0 }]] },
+    "Load Prospect Watchlist": { "main": [[{ "node": "News API — Search Company News", "type": "main", "index": 0 }]] },
+    "News API — Search Company News": { "main": [[{ "node": "Claude — Generate Prospect Briefing", "type": "main", "index": 0 }]] },
+    "Claude — Generate Prospect Briefing": { "main": [[{ "node": "Save Briefing to Notion BD", "type": "main", "index": 0 }, { "node": "Build Weekly Digest", "type": "main", "index": 0 }]] },
+    "Build Weekly Digest": { "main": [[{ "node": "Send Weekly BD Digest", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": ["exsto-cura", "bd", "prospects", "intelligence"]
+}

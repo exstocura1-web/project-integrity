@@ -1,0 +1,135 @@
+{
+  "name": "Exsto Cura — SmartPM Market Intelligence & Outreach Agent",
+  "nodes": [
+
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 6 * * 1" }] }
+      },
+      "name": "Trigger — Every Monday 6am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [240, 400],
+      "notes": "Runs weekly — generates fresh prospect intelligence and outreach drafts every Monday before your BD digest"
+    },
+
+    {
+      "parameters": {
+        "jsCode": "// ════════════════════════════════════════════════════════\n// EXSTO CURA — SMARTPM PROSPECT DATABASE\n// Edit this list as you qualify/disqualify targets\n// Signal codes: LOSS=financial loss documented, DELAY=project delay public, LIEN=lien filed, BOND=surety claim\n// ════════════════════════════════════════════════════════\n\nconst prospects = [\n\n  // ── SEGMENT 1: MID-SIZE GCs — REGIONAL HEAVY CIVIL ──────────────────────\n  {\n    company: 'Barnard Construction Company',\n    segment: 'Mid-Size GC',\n    vertical: 'Heavy Civil / Infrastructure',\n    revenue_est: '$500M-$800M',\n    hq: 'Bozeman, MT',\n    vertically_integrated: false,\n    signal: 'DELAY',\n    signal_detail: 'Pipeline and transmission corridor projects with documented schedule pressure. Not ENR Top 50.',\n    project_range: '$100-300M',\n    contact_title: 'VP of Operations / Project Controls Manager',\n    smartpm_fit: 'HIGH',\n    bir_fit: 'MEDIUM',\n    search_keywords: ['Barnard Construction schedule delay', 'Barnard Construction project controls', 'Barnard Construction claim'],\n    outreach_angle: 'Heavy civil corridor experience maps directly to their pipeline/transmission work. BIR on next bid package.'\n  },\n\n  {\n    company: 'Granite Telecommunications / Granite Construction (mid-tier ops)',\n    segment: 'Mid-Size GC',\n    vertical: 'Heavy Civil / Highway',\n    revenue_est: '$300-600M ops division',\n    hq: 'Watsonville, CA',\n    vertically_integrated: false,\n    signal: 'LOSS',\n    signal_detail: 'Public company — SEC filings show project write-downs on fixed-price highway contracts 2023-2024.',\n    project_range: '$150-300M',\n    contact_title: 'Director of Project Controls',\n    smartpm_fit: 'HIGH',\n    bir_fit: 'HIGH',\n    search_keywords: ['Granite Construction project loss 2024', 'Granite Construction schedule claim', 'Granite Construction 10-K overrun'],\n    outreach_angle: 'SEC-documented project losses. SmartPM monitoring prevents recurrence. BIR on active bids.'\n  },\n\n  {\n    company: 'Primoris Services Corporation — Utilities Division',\n    segment: 'Mid-Size GC',\n    vertical: 'Utilities / Pipeline / Power',\n    revenue_est: '$800M-$1.2B (utilities segment)',\n    hq: 'Dallas, TX',\n    vertically_integrated: false,\n    signal: 'LOSS',\n    signal_detail: 'Public company. Utilities segment has shown margin compression on fixed-price contracts. Not vertically integrated on controls side.',\n    project_range: '$100-250M',\n    contact_title: 'VP Project Controls / Scheduling Manager',\n    smartpm_fit: 'HIGH',\n    bir_fit: 'HIGH',\n    search_keywords: ['Primoris Services project loss utilities', 'Primoris schedule delay claim', 'Primoris 10-K cost overrun'],\n    outreach_angle: 'Texas-based — local relationship angle. Utilities/power corridor overlap with CHPE experience.'\n  },\n\n  {\n    company: 'Wanzek Construction',\n    segment: 'Mid-Size GC',\n    vertical: 'Energy / Industrial / Wind',\n    revenue_est: '$400-700M',\n    hq: 'Fargo, ND',\n    vertically_integrated: false,\n    signal: 'DELAY',\n    signal_detail: 'Wind and industrial construction. Complex multi-prime interfaces. Known for schedule pressure on renewable energy projects.',\n    project_range: '$100-300M',\n    contact_title: 'Director of Planning and Scheduling',\n    smartpm_fit: 'HIGH',\n    bir_fit: 'MEDIUM',\n    search_keywords: ['Wanzek Construction schedule delay', 'Wanzek wind project controls', 'Wanzek Construction claim'],\n    outreach_angle: 'Renewable energy + HVDC transmission intersection. ALICE simulation angle on pre-construction.'\n  },\n\n  {\n    company: 'Cianbro Corporation',\n    segment: 'Mid-Size GC',\n    vertical: 'Industrial / Marine / Energy',\n    revenue_est: '$600M-$900M',\n    hq: 'Pittsfield, ME',\n    vertically_integrated: false,\n    signal: 'DELAY',\n    signal_detail: 'Complex industrial and marine projects in Northeast. Known schedule complexity on multi-discipline projects.',\n    project_range: '$100-300M',\n    contact_title: 'VP Engineering and Planning',\n    smartpm_fit: 'HIGH',\n    bir_fit: 'HIGH',\n    search_keywords: ['Cianbro Corporation project delay', 'Cianbro schedule claim', 'Cianbro project controls'],\n    outreach_angle: 'Northeast corridor — geographic overlap with CHPE/TDI territory. Marine and industrial scope experience.'\n  },\n\n  {\n    company: 'Dunn Construction Co',\n    segment: 'Mid-Size GC',\n    vertical: 'Heavy Civil / Highways',\n    revenue_est: '$200-400M',\n    hq: 'Birmingham, AL',\n    vertically_integrated: false,\n    signal: 'LOSS',\n    signal_detail: 'Regional heavy civil. Fixed-price highway and bridge projects with documented completion delays on state DOT contracts.',\n    project_range: '$100-200M',\n    contact_title: 'Project Manager / Scheduling Lead',\n    smartpm_fit: 'MEDIUM',\n    bir_fit: 'HIGH',\n    search_keywords: ['Dunn Construction Alabama delay claim', 'Dunn Construction DOT project overrun'],\n    outreach_angle: 'SmartPM Essentials entry point. BIR on DOT bid packages. Low-cost entry for regional player.'\n  },\n\n  // ── SEGMENT 2: NON-VERTICALLY INTEGRATED OWNERS ──────────────────────────\n  {\n    company: 'NV Energy (Berkshire Hathaway Energy)',\n    segment: 'Owner — Utility',\n    vertical: 'Power / Transmission',\n    revenue_est: 'Subsidiary — large',\n    hq: 'Las Vegas, NV',\n    vertically_integrated: false,\n    signal: 'DELAY',\n    signal_detail: 'Transmission expansion program. Owner-side controls dependent on contractor reporting. No independent schedule analytics capability.',\n    project_range: '$150-400M',\n    contact_title: 'Director of Capital Projects / Project Controls',\n    smartpm_fit: 'HIGH',\n    bir_fit: 'HIGH',\n    search_keywords: ['NV Energy transmission project delay', 'NV Energy capital project controls', 'NV Energy contractor claim'],\n    outreach_angle: 'Direct TDI/CHPE analog. Transmission owner with no independent controls. BIR + SmartPM Owner module.'\n  },\n\n  {\n    company: 'Avangrid Renewables',\n    segment: 'Owner — Renewable Energy',\n    vertical: 'Offshore Wind / Transmission',\n    revenue_est: '$2B+ parent',\n    hq: 'Portland, ME',\n    vertically_integrated: false,\n    signal: 'DELAY',\n    signal_detail: 'Vineyard Wind and other offshore projects experiencing significant schedule delays. Owner-side controls gap documented publicly.',\n    project_range: '$200-500M+',\n    contact_title: 'VP Project Controls / Director of Construction',\n    smartpm_fit: 'HIGH',\n    bir_fit: 'HIGH',\n    search_keywords: ['Avangrid offshore wind delay 2024 2025', 'Avangrid project controls gap', 'Avangrid Vineyard Wind schedule'],\n    outreach_angle: 'Offshore wind + transmission. Ørsted connection as warm intro path. Owner intelligence gap is the exact problem.'\n  },\n\n  {\n    company: 'Pattern Energy',\n    segment: 'Owner — Renewable Energy',\n    vertical: 'Wind / Solar / Transmission',\n    revenue_est: '$1B+ (CPP Investments backed)',\n    hq: 'San Francisco, CA',\n    vertically_integrated: false,\n    signal: 'DELAY',\n    signal_detail: 'SunZia transmission project — largest wind energy project in US history. Complex multi-contractor delivery. Owner-side controls critical.',\n    project_range: '$100-300M per phase',\n    contact_title: 'VP Construction / Project Controls Director',\n    smartpm_fit: 'HIGH',\n    bir_fit: 'HIGH',\n    search_keywords: ['Pattern Energy SunZia delay 2025', 'Pattern Energy project controls', 'SunZia transmission schedule'],\n    outreach_angle: 'SunZia is the CHPE equivalent in the Southwest. Owner-side IMS + SmartPM is the exact capability gap.'\n  },\n\n  // ── SEGMENT 3: REGIONAL TRANSIT / WATER AUTHORITIES ─────────────────────\n  {\n    company: 'Sound Transit (Seattle)',\n    segment: 'Public Owner — Transit',\n    vertical: 'Rail / Transit Infrastructure',\n    revenue_est: 'Public agency — $54B program',\n    hq: 'Seattle, WA',\n    vertically_integrated: false,\n    signal: 'LOSS',\n    signal_detail: 'Documented cost overruns exceeding $12B on light rail extensions. Schedule slippage publicly reported. Board-level scrutiny.',\n    project_range: '$200-800M per contract',\n    contact_title: 'Director of Project Controls / Capital Programs',\n    smartpm_fit: 'HIGH',\n    bir_fit: 'HIGH',\n    search_keywords: ['Sound Transit cost overrun 2024 2025', 'Sound Transit schedule delay project controls', 'Sound Transit contractor claim'],\n    outreach_angle: 'FedRAMP authorized SmartPM fits public agency procurement. Documented losses create urgency. BIR on active bid packages.'\n  },\n\n  {\n    company: 'Denver Water',\n    segment: 'Public Owner — Water Utility',\n    vertical: 'Water Infrastructure',\n    revenue_est: 'Public utility — $2B+ capital program',\n    hq: 'Denver, CO',\n    vertically_integrated: false,\n    signal: 'DELAY',\n    signal_detail: 'Gross Reservoir expansion project experienced significant delays and cost increases. Owner-side controls gap.',\n    project_range: '$100-300M',\n    contact_title: 'Capital Projects Director / Project Controls Manager',\n    smartpm_fit: 'HIGH',\n    bir_fit: 'MEDIUM',\n    search_keywords: ['Denver Water Gross Reservoir delay overrun', 'Denver Water project controls capital program'],\n    outreach_angle: 'Water utility owner with documented project loss. SmartPM Owner module + BIR on next bid cycle.'\n  },\n\n  // ── SEGMENT 4: SMALL CONSULTING COMPANIES (OPM/CM) ───────────────────────\n  {\n    company: 'ARCADIS — Project Controls Division (mid-market)',\n    segment: 'Small-Mid Consulting',\n    vertical: 'Program Management / Owner Rep',\n    revenue_est: 'Parent large — target division is mid-market',\n    hq: 'Global / US offices',\n    vertically_integrated: false,\n    signal: 'DELAY',\n    signal_detail: 'Consulting firm competing on owner-rep engagements. Technology differentiation is a procurement win factor.',\n    project_range: '$100-300M client projects',\n    contact_title: 'Practice Lead — Project Controls',\n    smartpm_fit: 'HIGH',\n    bir_fit: 'HIGH',\n    search_keywords: ['Arcadis project controls SmartPM', 'Arcadis schedule analytics construction'],\n    outreach_angle: 'Co-referral model. They bring the relationship, you and SmartPM bring the AI analytics stack. Sub-consulting angle.'\n  },\n\n  {\n    company: 'Cumming Group',\n    segment: 'Small-Mid Consulting',\n    vertical: 'Owner Rep / Program Management',\n    revenue_est: '$200-400M',\n    hq: 'Atlanta, GA',\n    vertically_integrated: false,\n    signal: 'DELAY',\n    signal_detail: 'Growing OPM firm. Competes on relationships but lacks technology-enabled schedule controls differentiation.',\n    project_range: '$100-300M client projects',\n    contact_title: 'Regional Director / VP Project Controls',\n    smartpm_fit: 'HIGH',\n    bir_fit: 'HIGH',\n    search_keywords: ['Cumming Group project controls technology', 'Cumming Group SmartPM schedule analytics'],\n    outreach_angle: 'SmartPM as competitive differentiator in their proposals. You become their technology enablement partner.'\n  },\n\n  {\n    company: 'Kitchell Corporation',\n    segment: 'Small-Mid GC / CM',\n    vertical: 'Healthcare / Education / Institutional',\n    revenue_est: '$500-800M',\n    hq: 'Phoenix, AZ',\n    vertically_integrated: false,\n    signal: 'DELAY',\n    signal_detail: 'Complex institutional projects with LD exposure. Healthcare and education construction has aggressive penalty clauses.',\n    project_range: '$100-250M',\n    contact_title: 'Director of Scheduling / VP Operations',\n    smartpm_fit: 'HIGH',\n    bir_fit: 'MEDIUM',\n    search_keywords: ['Kitchell Corporation schedule delay', 'Kitchell project controls healthcare construction'],\n    outreach_angle: 'Institutional owner market — LD exposure on hospital and school projects. SmartPM continuous monitoring.'\n  },\n\n  {\n    company: 'Solo OPM Practitioners — LinkedIn Sourced',\n    segment: 'Solo Consulting',\n    vertical: 'All',\n    revenue_est: '$500K-$2M annual',\n    hq: 'Various',\n    vertically_integrated: false,\n    signal: 'NONE — proactive play',\n    signal_detail: 'Senior OPMs (20+ yrs exp) running solo practices. Need SmartPM to compete against larger CM firms. Cannot access enterprise licensing directly.',\n    project_range: '$100-300M client projects',\n    contact_title: 'Principal / Owner',\n    smartpm_fit: 'HIGH',\n    bir_fit: 'HIGH',\n    search_keywords: ['independent owner representative construction LinkedIn', 'solo project controls consultant LinkedIn', 'OPM consultant independent'],\n    outreach_angle: 'Peer-to-peer. You are them. SmartPM Essentials through your partner agreement. Offer sub-consulting on BIR engagements.'\n  }\n\n];\n\nconst today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });\n\nreturn prospects.map(p => ({ json: { ...p, generated_date: today } }));"
+      },
+      "name": "Load Prospect Database",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 400]
+    },
+
+    {
+      "parameters": {
+        "url": "=https://newsapi.org/v2/everything?q={{ encodeURIComponent($json.search_keywords[0]) }}&sortBy=publishedAt&pageSize=3&language=en&apiKey=YOUR_NEWSAPI_KEY",
+        "options": { "response": { "response": { "responseFormat": "json" } } }
+      },
+      "name": "News API — Scan for Signals",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [720, 400]
+    },
+
+    {
+      "parameters": {
+        "url": "=https://efts.sec.gov/LATEST/search-index?q=%22{{ encodeURIComponent($('Load Prospect Database').first().json.company) }}%22+%22project+loss%22&dateRange=custom&startdt=2024-01-01&enddt=2026-12-31&forms=10-K,10-Q,8-K",
+        "options": { "response": { "response": { "responseFormat": "json" } } }
+      },
+      "name": "SEC EDGAR — Search Financial Filings",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [720, 560],
+      "notes": "Free SEC full-text search API — no key needed. Searches for project loss disclosures in 10-K, 10-Q, 8-K filings."
+    },
+
+    {
+      "parameters": {
+        "model": "claude-sonnet-4-20250514",
+        "messages": {
+          "values": [
+            {
+              "role": "user",
+              "content": "=You are the business development intelligence assistant for Michael Craig at Exsto Cura Consilium.\n\nMichael is a Senior Principal project controls consultant and authorized SmartPM referral partner.\nHis specialization: HVDC transmission, offshore wind, energy infrastructure, AI-enabled project controls.\nKey offerings: BIR™ (Bid Schedule Intelligence Review), TRIAGE-IMPACT™ TIA framework, SmartPM deployment, ALICE simulation.\nProof of concept: CO-015 on CHPE settled $27M — the parallel tracks gap between schedule forensics and commercial claims.\n\nAnalyze this prospect and write a targeted intelligence brief.\n\nCOMPANY: {{ $('Load Prospect Database').first().json.company }}\nSEGMENT: {{ $('Load Prospect Database').first().json.segment }}\nVERTICAL: {{ $('Load Prospect Database').first().json.vertical }}\nSIGNAL TYPE: {{ $('Load Prospect Database').first().json.signal }}\nSIGNAL DETAIL: {{ $('Load Prospect Database').first().json.signal_detail }}\nSMARTPM FIT: {{ $('Load Prospect Database').first().json.smartpm_fit }}\nBIR FIT: {{ $('Load Prospect Database').first().json.bir_fit }}\nOUTREACH ANGLE: {{ $('Load Prospect Database').first().json.outreach_angle }}\nPROJECT RANGE: {{ $('Load Prospect Database').first().json.project_range }}\n\nRECENT NEWS:\n{{ JSON.stringify($('News API — Scan for Signals').first().json.articles?.slice(0,3).map(a => ({ title: a.title, date: a.publishedAt, source: a.source?.name, snippet: a.description })), null, 2) }}\n\nSEC FILING SIGNALS:\n{{ JSON.stringify($('SEC EDGAR — Search Financial Filings').first().json?.hits?.hits?.slice(0,3).map(h => ({ filing: h._source?.period_of_report, form: h._source?.form_type, snippet: h._source?.file_date })), null, 2) }}\n\nWrite a crisp intelligence brief with these exact sections:\n\n## SITUATION\n2-3 sentences. What is happening with this company right now based on news and signals.\n\n## PAIN SIGNAL\n1-2 sentences. Specific evidence of the schedule/commercial problem SmartPM solves.\n\n## MICHAEL'S ANGLE\n2-3 sentences. Why reach out NOW. What specific capability closes their gap.\n\n## OUTREACH MESSAGE (LinkedIn or Email)\nWrite a 5-7 sentence message in Michael's voice:\n- Reference specific company situation or recent news\n- Mention CHPE/HVDC experience as credibility anchor\n- Position SmartPM as the solution (not a tool pitch — a capability offer)\n- Include BIR as low-risk entry point where fit is HIGH\n- Do NOT mention dollar amounts or pricing\n- End with a specific question that invites a reply\n\n## RECOMMENDED ACTION\nOne clear next step. Specific.\n\n## PRIORITY SCORE\nRate 1-10 based on: signal strength, SmartPM fit, BIR fit, relationship potential, timing."
+            }
+          ]
+        },
+        "options": { "maxTokens": 1500 }
+      },
+      "name": "Claude — Generate Prospect Brief",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1,
+      "position": [960, 480],
+      "credentials": { "anthropicApi": { "name": "Anthropic — Exsto Cura" } }
+    },
+
+    {
+      "parameters": {
+        "databaseId": "YOUR_NOTION_BD_DATABASE_ID",
+        "title": "={{ $('Load Prospect Database').first().json.company }} — SmartPM Intel {{ new Date().toLocaleDateString() }}",
+        "propertiesUi": {
+          "propertyValues": [
+            { "key": "Company", "type": "rich_text", "textValue": "={{ $('Load Prospect Database').first().json.company }}" },
+            { "key": "Segment", "type": "select", "selectValue": "={{ $('Load Prospect Database').first().json.segment }}" },
+            { "key": "Signal", "type": "select", "selectValue": "={{ $('Load Prospect Database').first().json.signal }}" },
+            { "key": "SmartPM Fit", "type": "select", "selectValue": "={{ $('Load Prospect Database').first().json.smartpm_fit }}" },
+            { "key": "BIR Fit", "type": "select", "selectValue": "={{ $('Load Prospect Database').first().json.bir_fit }}" },
+            { "key": "Status", "type": "select", "selectValue": "Brief Ready" },
+            { "key": "Week", "type": "date", "dateValue": "={{ new Date().toISOString() }}" }
+          ]
+        },
+        "blockUi": {
+          "blockValues": [
+            { "type": "paragraph", "richText": { "text": "={{ $json.text }}" } }
+          ]
+        }
+      },
+      "name": "Save to Notion BD",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [1200, 400],
+      "credentials": { "notionApi": { "name": "Notion — Exsto Cura" } }
+    },
+
+    {
+      "parameters": {
+        "jsCode": "const allItems = $input.all();\nconst today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });\n\n// Sort by priority (extract from text if available)\nlet digest = `<div style='font-family: Georgia, serif; max-width: 700px; padding: 24px; background: #080808; color: #ede9e1;'>`;\ndigest += `<div style='border-bottom: 1px solid rgba(201,169,110,0.3); padding-bottom: 16px; margin-bottom: 24px;'>`;\ndigest += `<div style='font-family: monospace; font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: #c9a96e; margin-bottom: 8px;'>SmartPM Market Intelligence</div>`;\ndigest += `<h2 style='font-size: 22px; font-weight: 600; color: #ede9e1; margin: 0;'>Weekly Prospect Briefing</h2>`;\ndigest += `<p style='font-size: 12px; color: #666; margin: 6px 0 0;'>${today} · ${allItems.length} prospects analyzed · Exsto Cura Consilium</p></div>`;\n\nallItems.forEach((item, i) => {\n  const p = item.json;\n  const signalColor = p.signal === 'LOSS' ? '#e07070' : p.signal === 'DELAY' ? '#e0b870' : '#7dc89a';\n  const fitColor = p.smartpm_fit === 'HIGH' ? '#7dc89a' : p.smartpm_fit === 'MEDIUM' ? '#e0b870' : '#888';\n  \n  digest += `<div style='margin-bottom: 28px; padding: 18px; background: #111; border-left: 3px solid #c9a96e;'>`;\n  digest += `<div style='display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;'>`;\n  digest += `<h3 style='font-size: 15px; font-weight: 600; color: #ede9e1; margin: 0;'>${p.company}</h3>`;\n  digest += `<div style='display: flex; gap: 6px; flex-wrap: wrap;'>`;\n  digest += `<span style='font-size: 10px; padding: 2px 8px; background: rgba(201,169,110,0.1); border: 1px solid rgba(201,169,110,0.3); color: #c9a96e; font-family: monospace; letter-spacing: 1px;'>${p.segment}</span>`;\n  digest += `<span style='font-size: 10px; padding: 2px 8px; border: 1px solid; color: ${signalColor}; border-color: ${signalColor}; font-family: monospace; letter-spacing: 1px;'>⚡ ${p.signal}</span>`;\n  digest += `<span style='font-size: 10px; padding: 2px 8px; border: 1px solid; color: ${fitColor}; border-color: ${fitColor}; font-family: monospace; letter-spacing: 1px;'>SPM ${p.smartpm_fit}</span>`;\n  digest += `</div></div>`;\n  digest += `<p style='font-size: 12px; color: #888; margin: 0 0 10px; font-style: italic;'>${p.vertical} · ${p.hq} · ${p.project_range}</p>`;\n  digest += `<p style='font-size: 12px; color: #aaa; line-height: 1.6; margin: 0 0 10px;'><strong style='color: #c9a96e;'>Signal:</strong> ${p.signal_detail}</p>`;\n  digest += `<p style='font-size: 12px; color: #aaa; line-height: 1.6; margin: 0;'><strong style='color: #c9a96e;'>Your Angle:</strong> ${p.outreach_angle}</p>`;\n  if (p.text) {\n    const preview = p.text.substring(0, 300);\n    digest += `<div style='margin-top: 12px; padding: 10px; background: #1a1a1a; border-top: 1px solid rgba(201,169,110,0.15); font-size: 11px; color: #777; line-height: 1.55;'>${preview}...</div>`;\n  }\n  digest += `</div>`;\n});\n\ndigest += `<div style='border-top: 1px solid rgba(201,169,110,0.2); padding-top: 14px; margin-top: 8px;'>`;\ndigest += `<p style='font-size: 11px; color: #555; font-family: monospace;'>Full briefings with outreach messages saved in Notion BD workspace · Exsto Cura SmartPM Market Agent</p></div></div>`;\n\nreturn [{ json: { digest, count: allItems.length, date: today } }];"
+      },
+      "name": "Build Weekly Market Digest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 580]
+    },
+
+    {
+      "parameters": {
+        "sendTo": "mcraig@exstocura.com",
+        "subject": "=📊 SmartPM Market Intel — {{ $json.count }} Prospects | {{ $json.date }}",
+        "emailType": "html",
+        "message": "={{ $json.digest }}",
+        "options": {}
+      },
+      "name": "Send Market Digest to Michael",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [1440, 580],
+      "credentials": { "gmailOAuth2": { "name": "Gmail — mcraig@exstocura.com" } }
+    }
+
+  ],
+
+  "connections": {
+    "Trigger — Every Monday 6am": { "main": [[{ "node": "Load Prospect Database", "type": "main", "index": 0 }]] },
+    "Load Prospect Database": { "main": [[{ "node": "News API — Scan for Signals", "type": "main", "index": 0 }, { "node": "SEC EDGAR — Search Financial Filings", "type": "main", "index": 0 }]] },
+    "News API — Scan for Signals": { "main": [[{ "node": "Claude — Generate Prospect Brief", "type": "main", "index": 0 }]] },
+    "SEC EDGAR — Search Financial Filings": { "main": [[{ "node": "Claude — Generate Prospect Brief", "type": "main", "index": 0 }]] },
+    "Claude — Generate Prospect Brief": { "main": [[{ "node": "Save to Notion BD", "type": "main", "index": 0 }, { "node": "Build Weekly Market Digest", "type": "main", "index": 0 }]] },
+    "Build Weekly Market Digest": { "main": [[{ "node": "Send Market Digest to Michael", "type": "main", "index": 0 }]] }
+  },
+
+  "settings": { "executionOrder": "v1" },
+  "tags": ["exsto-cura", "smartpm", "market-intelligence", "bd", "referral"]
+}

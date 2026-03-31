@@ -1,0 +1,7 @@
+[2026-03-30T00:18:17Z] | _ | UI test run start | slow_mo=200 | exec_wait_ms=120000
+[2026-03-30T00:20:37Z] | _ | LOGIN FAILED: Timeout 120000ms exceeded.
+=========================== logs ===========================
+waiting for navigation to "re.compile('.*/(workflows|workflow|overview|home)')" until 'load'
+  navigated to "https://exo-project-integrity.app.n8n.cloud/signin?redirect=%252F"
+  navigated to "https://exo-project-integrity.app.n8n.cloud/forgot-password"
+============================================================

@@ -1,0 +1,131 @@
+{
+  "name": "Exsto Cura — Email Triage Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": { "item": [{ "mode": "everyMinute", "minute": 5 }] },
+        "filters": { "readStatus": "unread" }
+      },
+      "name": "Gmail Trigger — Unread Emails",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "credentials": { "gmailOAuth2": { "name": "Gmail — mcraig@exstocura.com" } }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $credentials.httpHeaderAuth.value }}" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1000, messages: [{ role: 'user', content: 'You are the email triage assistant for Michael Craig, founder of Exsto Cura Consilium, a senior project controls consulting firm.\\n\\nAnalyze this incoming email and classify it. Return ONLY valid JSON, no markdown or other text.\\n\\nEMAIL FROM: ' + ($json.from || '') + '\\nSUBJECT: ' + ($json.subject || '') + '\\nBODY: ' + String($json.text || $json.snippet || '').substring(0, 12000) + '\\n\\nClassify as exactly one of: URGENT, BD, ROUTINE, VENDOR, or JUNK.\\n- URGENT: Requires Michael\\'s attention today (client issue, contract matter, TDI/Scott, SmartPM/Billy/Jose, legal, payment overdue >14 days)\\n- BD: Business development opportunity or prospect inquiry\\n- ROUTINE: Standard correspondence, scheduling, follow-ups\\n- VENDOR: Software, tools, subscriptions\\n- JUNK: Spam, cold outreach with no relevance\\n\\nReturn this exact JSON structure:\\n{\\n  \"classification\": \"URGENT|BD|ROUTINE|VENDOR|JUNK\",\\n  \"priority_score\": <number 1-10>,\\n  \"sender_type\": \"Client|Prospect|Partner|Vendor|Unknown\",\\n  \"summary\": \"One sentence summary\",\\n  \"suggested_action\": \"What Michael should do\",\\n  \"draft_reply\": \"Professional draft in Michael\\'s voice; blank if JUNK\",\\n  \"requires_michael\": true or false\\n}' }] }) }}",
+        "options": {}
+      },
+      "name": "Claude Classify — HTTP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [480, 300],
+      "credentials": { "httpHeaderAuth": { "name": "Anthropic account" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nconst raw = (j.content && j.content[0] && j.content[0].text) ? j.content[0].text : (typeof j.text === 'string' ? j.text : '');\nlet parsed;\ntry {\n  const jsonMatch = raw.match(/\\{[\\s\\S]*\\}/);\n  parsed = JSON.parse(jsonMatch[0]);\n} catch(e) {\n  parsed = {\n    classification: 'ROUTINE',\n    priority_score: 5,\n    sender_type: 'Unknown',\n    summary: 'Could not parse — review manually',\n    suggested_action: 'Review manually',\n    draft_reply: '',\n    requires_michael: true\n  };\n}\nreturn [{ json: { ...parsed, original_from: $('Gmail Trigger — Unread Emails').first().json.from, original_subject: $('Gmail Trigger — Unread Emails').first().json.subject, email_id: $('Gmail Trigger — Unread Emails').first().json.id, timestamp: new Date().toISOString() } }];"
+      },
+      "name": "Parse Claude JSON Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            { "value1": "={{ $json.classification }}", "operation": "equals", "value2": "URGENT" }
+          ]
+        }
+      },
+      "name": "Is URGENT?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [960, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            { "value1": "={{ $json.classification }}", "operation": "equals", "value2": "JUNK" }
+          ]
+        }
+      },
+      "name": "Is JUNK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [960, 500]
+    },
+    {
+      "parameters": {
+        "sendTo": "mcraig@exstocura.com",
+        "subject": "=🔴 URGENT EMAIL — {{ $json.original_from }} | {{ $json.original_subject }}",
+        "emailType": "html",
+        "message": "=<div style='font-family: Georgia, serif; max-width: 600px; padding: 20px; background: #0d0d0d; color: #e8e4dc;'><h2 style='color: #c9a96e; border-bottom: 1px solid #333; padding-bottom: 10px;'>🔴 Urgent Email Alert</h2><p><strong>From:</strong> {{ $json.original_from }}</p><p><strong>Subject:</strong> {{ $json.original_subject }}</p><p><strong>Priority Score:</strong> {{ $json.priority_score }}/10</p><p><strong>Sender Type:</strong> {{ $json.sender_type }}</p><hr style='border-color: #333;'/><h3 style='color: #c9a96e;'>Summary</h3><p>{{ $json.summary }}</p><h3 style='color: #c9a96e;'>Suggested Action</h3><p>{{ $json.suggested_action }}</p><h3 style='color: #c9a96e;'>Draft Reply</h3><div style='background: #1a1a1a; padding: 15px; border-left: 3px solid #c9a96e;'>{{ $json.draft_reply }}</div><hr style='border-color: #333;'/><p style='color: #666; font-size: 12px;'>Exsto Cura Email Agent · {{ $json.timestamp }}</p></div>",
+        "options": {}
+      },
+      "name": "Notify Michael — URGENT",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [1200, 200],
+      "credentials": { "gmailOAuth2": { "name": "Gmail — mcraig@exstocura.com" } }
+    },
+    {
+      "parameters": {
+        "databaseId": "YOUR_NOTION_DATABASE_ID",
+        "title": "={{ $json.original_subject }}",
+        "propertiesUi": {
+          "propertyValues": [
+            { "key": "From", "type": "rich_text", "textValue": "={{ $json.original_from }}" },
+            { "key": "Classification", "type": "select", "selectValue": "={{ $json.classification }}" },
+            { "key": "Priority", "type": "number", "numberValue": "={{ $json.priority_score }}" },
+            { "key": "Summary", "type": "rich_text", "textValue": "={{ $json.summary }}" },
+            { "key": "Action", "type": "rich_text", "textValue": "={{ $json.suggested_action }}" },
+            { "key": "Draft Reply", "type": "rich_text", "textValue": "={{ $json.draft_reply }}" },
+            { "key": "Status", "type": "select", "selectValue": "Pending Review" },
+            { "key": "Date", "type": "date", "dateValue": "={{ $json.timestamp }}" }
+          ]
+        }
+      },
+      "name": "Log to Notion — Email Inbox",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [1200, 400],
+      "credentials": { "notionApi": { "name": "Notion — Exsto Cura" } }
+    },
+    {
+      "parameters": {
+        "labelIds": ["TRASH"],
+        "messageId": "={{ $json.email_id }}"
+      },
+      "name": "Archive — JUNK",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [1200, 600],
+      "credentials": { "gmailOAuth2": { "name": "Gmail — mcraig@exstocura.com" } }
+    }
+  ],
+  "connections": {
+    "Gmail Trigger — Unread Emails": { "main": [[{ "node": "Claude Classify — HTTP", "type": "main", "index": 0 }]] },
+    "Claude Classify — HTTP": { "main": [[{ "node": "Parse Claude JSON Response", "type": "main", "index": 0 }]] },
+    "Parse Claude JSON Response": { "main": [[{ "node": "Is URGENT?", "type": "main", "index": 0 }, { "node": "Is JUNK?", "type": "main", "index": 0 }, { "node": "Log to Notion — Email Inbox", "type": "main", "index": 0 }]] },
+    "Is URGENT?": { "main": [[{ "node": "Notify Michael — URGENT", "type": "main", "index": 0 }], []] },
+    "Is JUNK?": { "main": [[], [{ "node": "Archive — JUNK", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": ["exsto-cura", "email", "triage"]
+}

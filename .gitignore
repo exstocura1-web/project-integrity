@@ -1,0 +1,11 @@
+.env
+*.env
+n8n/local-secrets.env
+self-host/.env
+node_modules/
+.DS_Store
+Thumbs.db
+*.log
+packages/
+WinSCPnet.dll
+nuget.exe

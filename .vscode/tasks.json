@@ -1,0 +1,150 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "n8n: Invoke all webhooks (from .env)",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/n8n/invoke-all-n8n-webhooks.ps1"
+      ],
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "n8n: Email Triage — test webhook (POST)",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/n8n/test-email-triage-webhook.ps1"
+      ],
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "n8n: Email Triage — list execution errors",
+      "type": "shell",
+      "command": "py",
+      "args": ["-3", "email-triage-executions.py", "--limit", "40", "--errors-only"],
+      "options": {
+        "cwd": "${workspaceFolder}/n8n-workflows"
+      },
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "n8n: Invoke webhook (N8N_WEBHOOK_URL from .env)",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/n8n/invoke-n8n-webhook.ps1"
+      ],
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "n8n: Verify local workflows (build + JSON)",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/n8n/verify-n8n-local.ps1"
+      ],
+      "group": {
+        "kind": "test",
+        "isDefault": false
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "n8n: Verify local + LinkedIn DRY webhook smoke",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/n8n/verify-n8n-local.ps1"
+      ],
+      "options": {
+        "env": {
+          "N8N_LINKEDIN_DRY": "1"
+        }
+      },
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "n8n: Live manual tests (Cloud API, test_mode gates)",
+      "type": "shell",
+      "command": "py",
+      "args": ["-3", "run_live_manual_tests.py"],
+      "options": {
+        "cwd": "${workspaceFolder}/n8n-workflows"
+      },
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "n8n: Full verify (local build, then Cloud gates)",
+      "dependsOn": [
+        "n8n: Verify local workflows (build + JSON)",
+        "n8n: Live manual tests (Cloud API, test_mode gates)"
+      ],
+      "dependsOrder": "sequence",
+      "group": "test",
+      "problemMatcher": []
+    }
+  ]
+}

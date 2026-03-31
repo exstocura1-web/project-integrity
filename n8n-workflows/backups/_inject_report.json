@@ -1,0 +1,67 @@
+[
+  {
+    "workflow": "Exsto Cura \u2014 SmartPM Market Intelligence & Outreach Agent",
+    "backup": "Exsto_Cura_SmartPM_Market_Intelligence_Outreach_Agent_backup_20260329.json",
+    "put_http": 200,
+    "manual_pos": [
+      40,
+      320
+    ],
+    "set_pos": [
+      40,
+      480
+    ]
+  },
+  {
+    "workflow": "Exsto Cura \u2014 Invoice & Payment Agent",
+    "backup": "Exsto_Cura_Invoice_Payment_Agent_backup_20260329.json",
+    "put_http": 200,
+    "manual_pos": [
+      40,
+      220
+    ],
+    "set_pos": [
+      40,
+      380
+    ]
+  },
+  {
+    "workflow": "Exsto Cura \u2014 Monthly Report Pipeline Agent",
+    "backup": "Exsto_Cura_Monthly_Report_Pipeline_Agent_backup_20260329.json",
+    "put_http": 200,
+    "manual_pos": [
+      40,
+      220
+    ],
+    "set_pos": [
+      40,
+      380
+    ]
+  },
+  {
+    "workflow": "Exsto Cura \u2014 Prospect Intelligence Agent",
+    "backup": "Exsto_Cura_Prospect_Intelligence_Agent_backup_20260329.json",
+    "put_http": 200,
+    "manual_pos": [
+      40,
+      220
+    ],
+    "set_pos": [
+      40,
+      380
+    ]
+  },
+  {
+    "workflow": "Exsto Cura Weekly Digest",
+    "backup": "Exsto_Cura_Weekly_Digest_backup_20260329.json",
+    "put_http": 200,
+    "manual_pos": [
+      -1000,
+      320
+    ],
+    "set_pos": [
+      -1000,
+      480
+    ]
+  }
+]

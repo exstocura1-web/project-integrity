@@ -1,0 +1,13 @@
+Phase 0 — Security check (2026-03-29 UTC)
+
+1. Git repository: NO (git rev-parse: not a git repository at C:\Exsto)
+   - .gitignore exists at C:\Exsto\.gitignore and lists .env — good practice if repo is initialized later.
+
+2. .env in .gitignore: YES (when using git, .env is listed in C:\Exsto\.gitignore line 1)
+
+3. Sync-folder path check (C:\Exsto): PASS — path does not contain OneDrive, Dropbox, Google Drive, or iCloud.
+
+4. screenshots directory: ensured C:\Exsto\n8n-workflows\screenshots exists
+
+Phase 1 note: N8N_CLOUD_EMAIL / N8N_CLOUD_PASSWORD were not present in .env at automation time.
+Credentials must be added locally by the operator (never committed). UI tests cannot run until both are set.

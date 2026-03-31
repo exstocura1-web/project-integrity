@@ -1,0 +1,72 @@
+﻿[
+    {
+        "Workflow":  "Exsto Cura Email Triage v2",
+        "Skipped":  true,
+        "Reason":  "No manual/webhook trigger (n8n-nodes-base.gmailTrigger, n8n-nodes-base.scheduleTrigger)",
+        "ExecId":  null,
+        "Status":  "skipped",
+        "DurationMs":  null,
+        "Error":  null,
+        "LastNode":  null
+    },
+    {
+        "Workflow":  "Exsto Cura — SmartPM Market Intelligence \u0026 Outreach Agent",
+        "Skipped":  true,
+        "Reason":  "Schedule-only trigger - API test skipped (use UI or wait for cron)",
+        "ExecId":  null,
+        "Status":  "skipped",
+        "DurationMs":  null,
+        "Error":  null,
+        "LastNode":  null
+    },
+    {
+        "Workflow":  "Exsto Cura — Invoice \u0026 Payment Agent",
+        "Skipped":  true,
+        "Reason":  "Schedule-only trigger - API test skipped (use UI or wait for cron)",
+        "ExecId":  null,
+        "Status":  "skipped",
+        "DurationMs":  null,
+        "Error":  null,
+        "LastNode":  null
+    },
+    {
+        "Workflow":  "Exsto Cura Weekly Digest",
+        "Skipped":  true,
+        "Reason":  "Schedule-only trigger - API test skipped (use UI or wait for cron)",
+        "ExecId":  null,
+        "Status":  "skipped",
+        "DurationMs":  null,
+        "Error":  null,
+        "LastNode":  null
+    },
+    {
+        "Workflow":  "Exsto Cura — Monthly Report Pipeline Agent",
+        "Skipped":  true,
+        "Reason":  "Schedule-only trigger - API test skipped (use UI or wait for cron)",
+        "ExecId":  null,
+        "Status":  "skipped",
+        "DurationMs":  null,
+        "Error":  null,
+        "LastNode":  null
+    },
+    {
+        "Workflow":  "Exsto Cura — Prospect Intelligence Agent",
+        "Skipped":  true,
+        "Reason":  "Schedule-only trigger - API test skipped (use UI or wait for cron)",
+        "ExecId":  null,
+        "Status":  "skipped",
+        "DurationMs":  null,
+        "Error":  null,
+        "LastNode":  null
+    },
+    {
+        "Workflow":  "API probe (POST .../execute)",
+        "Skipped":  false,
+        "Reason":  "Platform capability check",
+        "ExecId":  null,
+        "Status":  "not available",
+        "DurationMs":  null,
+        "Error":  "HTTP 405",
+        "LastNode":  null
+    }
+]

@@ -1,0 +1,133 @@
+{
+  "name": "Exsto Cura — Invoice & Payment Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 9 * * 1,3,5" }] }
+      },
+      "name": "Schedule — Mon, Wed, Fri 9am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "notes": "Checks invoice status three times per week — enough to stay on top without being annoying"
+    },
+    {
+      "parameters": {
+        "url": "https://api.honeybook.com/api/v2/invoices?status=sent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": { "response": { "response": { "responseFormat": "json" } } }
+      },
+      "name": "HoneyBook — Get Outstanding Invoices",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [480, 300],
+      "credentials": { "httpHeaderAuth": { "name": "HoneyBook API Key" } },
+      "notes": "HoneyBook API key found in: Account Settings > Integrations > API"
+    },
+    {
+      "parameters": {
+        "jsCode": "const invoices = $input.first().json.invoices || [];\nconst today = new Date();\n\nreturn invoices.map(inv => {\n  const sentDate = new Date(inv.sent_at);\n  const daysOutstanding = Math.floor((today - sentDate) / (1000 * 60 * 60 * 24));\n  \n  let status;\n  if (daysOutstanding < 7)  status = 'CURRENT';\n  else if (daysOutstanding < 14) status = 'FOLLOW_UP';\n  else if (daysOutstanding < 30) status = 'OVERDUE';\n  else status = 'ESCALATE';\n  \n  return {\n    json: {\n      invoice_id: inv.id,\n      client_name: inv.client_name,\n      amount: inv.amount,\n      sent_date: inv.sent_at,\n      days_outstanding: daysOutstanding,\n      due_date: inv.due_date,\n      status,\n      invoice_number: inv.invoice_number\n    }\n  };\n}).filter(i => i.json.status !== 'CURRENT');"
+      },
+      "name": "Calculate Days Outstanding",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            { "value1": "={{ $json.status }}", "operation": "equals", "value2": "ESCALATE" }
+          ]
+        }
+      },
+      "name": "Is ESCALATE (30+ days)?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [960, 300]
+    },
+    {
+      "parameters": {
+        "model": "claude-sonnet-4-20250514",
+        "messages": {
+          "values": [
+            {
+              "role": "user",
+              "content": "=Write a professional payment follow-up message from Michael Craig at Exsto Cura Consilium.\n\nINVOICE DETAILS:\n- Client: {{ $json.client_name }}\n- Invoice #: {{ $json.invoice_number }}\n- Amount: ${{ $json.amount }}\n- Days Outstanding: {{ $json.days_outstanding }}\n- Status: {{ $json.status }}\n\nTone guidance by status:\n- FOLLOW_UP (7-14 days): Friendly, light touch, assume oversight\n- OVERDUE (14-30 days): Professional, clear, note the due date\n- ESCALATE (30+ days): Firm, professional, reference contract terms\n\nWrite ONLY the email body. No subject line. 3-5 sentences maximum. Do not be aggressive. Maintain the professional senior consultant relationship. Sign off as Michael Craig, Exsto Cura Consilium."
+            }
+          ]
+        },
+        "options": { "maxTokens": 300 }
+      },
+      "name": "Claude — Draft Follow-up Message",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1,
+      "position": [960, 500],
+      "credentials": { "anthropicApi": { "name": "Anthropic — Exsto Cura" } }
+    },
+    {
+      "parameters": {
+        "sendTo": "mcraig@exstocura.com",
+        "subject": "=🔴 ESCALATE — Invoice #{{ $json.invoice_number }} | {{ $json.client_name }} | ${{ $json.amount }} | {{ $json.days_outstanding }} Days",
+        "emailType": "html",
+        "message": "=<div style='font-family: Georgia, serif; max-width: 600px; padding: 20px; background: #0d0d0d; color: #e8e4dc;'><h2 style='color: #e07070; border-bottom: 1px solid #333; padding-bottom: 10px;'>🔴 Invoice Escalation Alert</h2><p><strong>Client:</strong> {{ $json.client_name }}</p><p><strong>Invoice:</strong> #{{ $json.invoice_number }}</p><p><strong>Amount:</strong> ${{ $json.amount }}</p><p><strong>Days Outstanding:</strong> {{ $json.days_outstanding }} days</p><p><strong>Status:</strong> {{ $json.status }}</p><hr style='border-color: #333;'/><p style='color: #e07070;'>This invoice is 30+ days outstanding. Review your contract terms and consider direct contact with the client.</p><p>Log into HoneyBook to take action.</p><hr style='border-color: #333;'/><p style='color: #666; font-size: 12px;'>Exsto Cura Invoice Agent</p></div>",
+        "options": {}
+      },
+      "name": "Alert Michael — ESCALATE",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [1200, 200],
+      "credentials": { "gmailOAuth2": { "name": "Gmail — mcraig@exstocura.com" } }
+    },
+    {
+      "parameters": {
+        "sendTo": "mcraig@exstocura.com",
+        "subject": "=💛 Invoice Follow-up Draft Ready — {{ $json.client_name }} | #{{ $json.invoice_number }} | {{ $json.days_outstanding }} Days",
+        "emailType": "html",
+        "message": "=<div style='font-family: Georgia, serif; max-width: 600px; padding: 20px; background: #0d0d0d; color: #e8e4dc;'><h2 style='color: #c9a96e; border-bottom: 1px solid #333; padding-bottom: 10px;'>💛 Invoice Follow-up Draft</h2><p><strong>Client:</strong> {{ $('Calculate Days Outstanding').first().json.client_name }}</p><p><strong>Invoice:</strong> #{{ $('Calculate Days Outstanding').first().json.invoice_number }}</p><p><strong>Amount:</strong> ${{ $('Calculate Days Outstanding').first().json.amount }}</p><p><strong>Days Outstanding:</strong> {{ $('Calculate Days Outstanding').first().json.days_outstanding }} days</p><hr style='border-color: #333;'/><h3 style='color: #c9a96e;'>Suggested Follow-up Message</h3><div style='background: #1a1a1a; padding: 15px; border-left: 3px solid #c9a96e; white-space: pre-wrap;'>{{ $json.text }}</div><hr style='border-color: #333;'/><p style='color: #999; font-size: 12px;'>Review, edit if needed, and send from HoneyBook or directly. Exsto Cura Invoice Agent.</p></div>",
+        "options": {}
+      },
+      "name": "Send Draft to Michael",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [1200, 500],
+      "credentials": { "gmailOAuth2": { "name": "Gmail — mcraig@exstocura.com" } }
+    },
+    {
+      "parameters": {
+        "databaseId": "YOUR_NOTION_FINANCE_DATABASE_ID",
+        "title": "={{ $('Calculate Days Outstanding').first().json.client_name }} — Invoice #{{ $('Calculate Days Outstanding').first().json.invoice_number }}",
+        "propertiesUi": {
+          "propertyValues": [
+            { "key": "Client", "type": "rich_text", "textValue": "={{ $('Calculate Days Outstanding').first().json.client_name }}" },
+            { "key": "Amount", "type": "number", "numberValue": "={{ $('Calculate Days Outstanding').first().json.amount }}" },
+            { "key": "Days Outstanding", "type": "number", "numberValue": "={{ $('Calculate Days Outstanding').first().json.days_outstanding }}" },
+            { "key": "Status", "type": "select", "selectValue": "={{ $('Calculate Days Outstanding').first().json.status }}" },
+            { "key": "Last Checked", "type": "date", "dateValue": "={{ new Date().toISOString() }}" }
+          ]
+        }
+      },
+      "name": "Log to Notion Finance Tracker",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [1440, 380],
+      "credentials": { "notionApi": { "name": "Notion — Exsto Cura" } }
+    }
+  ],
+  "connections": {
+    "Schedule — Mon, Wed, Fri 9am": { "main": [[{ "node": "HoneyBook — Get Outstanding Invoices", "type": "main", "index": 0 }]] },
+    "HoneyBook — Get Outstanding Invoices": { "main": [[{ "node": "Calculate Days Outstanding", "type": "main", "index": 0 }]] },
+    "Calculate Days Outstanding": { "main": [[{ "node": "Is ESCALATE (30+ days)?", "type": "main", "index": 0 }]] },
+    "Is ESCALATE (30+ days)?": {
+      "main": [
+        [{ "node": "Alert Michael — ESCALATE", "type": "main", "index": 0 }],
+        [{ "node": "Claude — Draft Follow-up Message", "type": "main", "index": 0 }]
+      ]
+    },
+    "Claude — Draft Follow-up Message": { "main": [[{ "node": "Send Draft to Michael", "type": "main", "index": 0 }, { "node": "Log to Notion Finance Tracker", "type": "main", "index": 0 }]] },
+    "Alert Michael — ESCALATE": { "main": [[{ "node": "Log to Notion Finance Tracker", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": ["exsto-cura", "invoicing", "finance", "honeybook"]
+}

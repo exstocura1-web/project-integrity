@@ -1,0 +1,47 @@
+[
+  {
+    "workflow": "Exsto Cura — SmartPM Market Intelligence & Outreach Agent",
+    "pre_gate_backup": "Exsto_Cura_SmartPM_Market_Intelligence_Outreach_Agent_post-inject_20260329.json",
+    "if_injected": false,
+    "stop_injected": false,
+    "rewired": false,
+    "put_status": "skipped",
+    "note": "already gated"
+  },
+  {
+    "workflow": "Exsto Cura — Invoice & Payment Agent",
+    "pre_gate_backup": "Exsto_Cura_Invoice_Payment_Agent_post-inject_20260329.json",
+    "if_injected": false,
+    "stop_injected": false,
+    "rewired": false,
+    "put_status": "skipped",
+    "note": "already gated"
+  },
+  {
+    "workflow": "Exsto Cura — Monthly Report Pipeline Agent",
+    "pre_gate_backup": "Exsto_Cura_Monthly_Report_Pipeline_Agent_post-inject_20260329.json",
+    "if_injected": false,
+    "stop_injected": false,
+    "rewired": false,
+    "put_status": "skipped",
+    "note": "already gated"
+  },
+  {
+    "workflow": "Exsto Cura — Prospect Intelligence Agent",
+    "pre_gate_backup": "Exsto_Cura_Prospect_Intelligence_Agent_post-inject_20260329.json",
+    "if_injected": false,
+    "stop_injected": false,
+    "rewired": false,
+    "put_status": "skipped",
+    "note": "already gated"
+  },
+  {
+    "workflow": "Exsto Cura Weekly Digest",
+    "pre_gate_backup": "Exsto_Cura_Weekly_Digest_post-inject_20260329.json",
+    "if_injected": false,
+    "stop_injected": false,
+    "rewired": false,
+    "put_status": "skipped",
+    "note": "already gated"
+  }
+]
