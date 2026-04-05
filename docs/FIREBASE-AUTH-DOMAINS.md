@@ -5,9 +5,11 @@ Add these under **Firebase Console → Authentication → Settings → Authorize
 | Domain | Purpose |
 |--------|---------|
 | `localhost` | Local dev (`npm run dev`, typically port 3000) |
-| `project-integrity.vercel.app` | Production Vercel alias |
-| `project-integrity-e9fm03doj-exstocura1-webs-projects.vercel.app` | Per-deployment Vercel hostname (optional but avoids surprises) |
-| `app.exstocura.com` | Custom domain when DNS is mapped |
+| `projectintegrity.cloud` | Production custom domain (apex) |
+| `www.projectintegrity.cloud` | Production custom domain (`www`) |
+| `project-integrity.vercel.app` | Default Vercel production hostname (optional if using custom domain only) |
+| `project-integrity-e9fm03doj-exstocura1-webs-projects.vercel.app` | Per-deployment Vercel hostname (optional for preview builds) |
+| `app.exstocura.com` | Other custom domain when DNS is mapped |
 
 Also verify **Authentication → Sign-in method → Google** is enabled.
 

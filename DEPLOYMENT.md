@@ -86,12 +86,14 @@ Vercel hosts your React UI.
    - **Framework Preset:** Vite
    - **Build Command:** `npm run build`
    - **Output Directory:** `dist`
-4. Add one environment variable:
-   - `VITE_API_URL` = your Railway URL (e.g. `https://project-integrity.up.railway.app`)
+4. Add environment variables (Production — use your real Railway hostname):
+   - `VITE_API_BASE_URL` = your Railway API URL (e.g. `https://project-integrity.up.railway.app`) — **preferred**
+   - `VITE_SOCKET_URL` = same host as above (no trailing slash)
+   - If an older project only has `VITE_API_URL`, set it to the same Railway URL (see `vite-env.d.ts`); prefer renaming to `VITE_API_BASE_URL` in the Vercel UI when possible.
 5. Click **Deploy**. Vercel builds and deploys in ~1 minute.
-6. Vercel gives you a URL like `https://project-integrity.vercel.app`
+6. Production UI is served at your custom domain (e.g. `https://projectintegrity.cloud`) once DNS is configured; default `*.vercel.app` hostnames remain available for previews.
 
-**Optional custom domain:** Vercel → Settings → Domains → add your own domain (e.g. `app.yourdomain.com`).
+**Custom domain:** Vercel → Project → Settings → Domains → add `projectintegrity.cloud` / `www.projectintegrity.cloud`. Set Railway `FRONTEND_URL` to the canonical browser origin you use (e.g. `https://projectintegrity.cloud`) so CORS matches.
 
 ---
 
@@ -161,6 +163,6 @@ Then replace each hardcoded value — `useProjectData.ts` has a comment block sh
 
 **Firestore permission denied:** Your UID in `firestore.rules` doesn't match. Go to Firebase → Authentication → Users → copy UID exactly.
 
-**Socket.io not connecting:** Make sure `VITE_API_URL` in Vercel points to your Railway URL (not localhost).
+**Socket.io not connecting:** In Vercel, set `VITE_SOCKET_URL` (and `VITE_API_BASE_URL` / `VITE_API_URL`) to your Railway URL (not localhost). The browser must use the real `https://…` Railway host, not a relative path, in a split deploy.
 
 **XER parse returns 0 activities:** The XER may use a different encoding. Try re-exporting from P6 with UTF-8 encoding selected.
