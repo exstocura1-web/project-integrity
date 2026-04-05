@@ -51,13 +51,38 @@ try {
   console.warn("Firebase Admin not configured — set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY in .env");
 }
 
+/** Always allowed together with FRONTEND_URL when CORS is restricted (split deploy). */
+const EXTRA_FRONTEND_ORIGINS = [
+  "https://projectintegrity.cloud",
+  "https://www.projectintegrity.cloud",
+] as const;
+
+function expressCorsOrigin(
+  primary: string,
+): boolean | ((origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) => void) {
+  if (!primary) return true;
+  const allow = new Set<string>([primary, ...EXTRA_FRONTEND_ORIGINS]);
+  return (origin, cb) => {
+    if (!origin) {
+      cb(null, true);
+      return;
+    }
+    cb(null, allow.has(origin));
+  };
+}
+
+function socketIoCorsOrigin(primary: string): boolean | string[] {
+  if (!primary) return true;
+  return Array.from(new Set([primary, ...EXTRA_FRONTEND_ORIGINS]));
+}
+
 async function startServer() {
   const app = express();
-  const frontendOrigin = process.env.FRONTEND_URL || "";
+  const frontendOrigin = process.env.FRONTEND_URL?.trim() || "";
   const httpServer = createServer(app);
   const io = new Server(httpServer, {
     cors: {
-      origin: frontendOrigin || true,
+      origin: socketIoCorsOrigin(frontendOrigin),
       credentials: true,
     }
   });
@@ -76,7 +101,7 @@ async function startServer() {
 
   // Middleware
   app.use(cors({
-    origin: frontendOrigin || true,
+    origin: expressCorsOrigin(frontendOrigin),
     credentials: true,
   }));
   app.use((req, _res, next) => {
