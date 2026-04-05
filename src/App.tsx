@@ -488,29 +488,41 @@ try {
       if (cancelled) return;
 
       unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-        if (currentUser) {
-          const userDocRef = doc(db, 'users', currentUser.uid);
-          const userDoc = await getDoc(userDocRef);
+        try {
+          if (currentUser) {
+            const userDocRef = doc(db, 'users', currentUser.uid);
+            const userDoc = await getDoc(userDocRef);
 
-          if (!userDoc.exists()) {
-            const newUser = {
-              uid: currentUser.uid,
-              email: currentUser.email,
-              displayName: currentUser.displayName,
-              role: 'viewer',
-              createdAt: new Date().toISOString(),
-            };
-            await setDoc(userDocRef, newUser);
+            if (!userDoc.exists()) {
+              const newUser = {
+                uid: currentUser.uid,
+                email: currentUser.email,
+                displayName: currentUser.displayName,
+                role: 'viewer',
+                createdAt: new Date().toISOString(),
+              };
+              await setDoc(userDocRef, newUser);
+              setUserRole('viewer');
+            } else {
+              setUserRole(userDoc.data().role);
+            }
+            setUser(currentUser);
+          } else {
+            setUser(null);
+            setUserRole(null);
+          }
+        } catch (e) {
+          console.error("User profile bootstrap failed (Firestore):", e);
+          if (currentUser) {
+            setUser(currentUser);
             setUserRole('viewer');
           } else {
-            setUserRole(userDoc.data().role);
+            setUser(null);
+            setUserRole(null);
           }
-          setUser(currentUser);
-        } else {
-          setUser(null);
-          setUserRole(null);
+        } finally {
+          setIsAuthReady(true);
         }
-        setIsAuthReady(true);
       });
     })();
 

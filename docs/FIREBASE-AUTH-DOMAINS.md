@@ -13,10 +13,28 @@ Add these under **Firebase Console → Authentication → Settings → Authorize
 
 Also verify **Authentication → Sign-in method → Google** is enabled.
 
-### Google Cloud OAuth (linked automatically by Firebase)
+### Google Cloud Console — OAuth 2.0 Web client (fixes `signInWithRedirect` loops on custom domains)
 
-If you use a **custom** OAuth client, ensure **Authorized redirect URIs** include Firebase’s handler, e.g.:
+Firebase injects your **Web client ID** into the client SDK. The same client must allow your **real site origins** and **all redirect handlers** Google uses during the redirect flow.
 
-`https://<your-project-id>.firebaseapp.com/__/auth/handler`
+1. **Find the Web client ID**
+   - [Google Cloud Console](https://console.cloud.google.com/) → select project **`gen-lang-client-0942661754`** (same as Firebase).
+   - **APIs & Services** → **Credentials**.
+   - Under **OAuth 2.0 Client IDs**, open the **Web client** (often named like *Web client (auto created by Google Service)*).
 
-…and if you use a custom auth domain, the matching `__/auth/handler` URL Firebase documents for that domain.
+2. **Authorized JavaScript origins** — add every origin users sign in from:
+
+   - `https://projectintegrity.cloud`
+   - `https://www.projectintegrity.cloud`
+   - `https://gen-lang-client-0942661754.firebaseapp.com` (matches `authDomain` in `firebase-applet-config.json`)
+   - Optional: `http://localhost:3000` and `http://localhost:5173` for local dev.
+
+3. **Authorized redirect URIs** — include **both** Firebase’s handler on the default auth domain **and** your custom hosts (Firebase may complete the round-trip via your page origin):
+
+   - `https://gen-lang-client-0942661754.firebaseapp.com/__/auth/handler` (**required** for default `authDomain`)
+   - `https://projectintegrity.cloud/__/auth/handler`
+   - `https://www.projectintegrity.cloud/__/auth/handler`
+
+4. Save, wait a minute, then retry sign-in in an incognito window.
+
+If any origin or redirect URI is missing, Google accepts the login but Firebase never establishes a session — the app returns to the login screen (auth loop).
